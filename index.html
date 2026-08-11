@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DK MLB DFS Research</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>⚾ DK MLB DFS Research</h1>
+    <div class="uploads">
+      <label class="upload-btn">
+        Batter Savant CSV
+        <input type="file" id="file-batters" accept=".csv">
+      </label>
+      <label class="upload-btn">
+        Pitcher Savant CSV
+        <input type="file" id="file-pitchers" accept=".csv">
+      </label>
+      <label class="upload-btn">
+        DK Salaries CSV
+        <input type="file" id="file-dk" accept=".csv">
+      </label>
+      <button id="clear-data" class="ghost-btn" title="Remove uploaded data stored in this browser">Clear data</button>
+    </div>
+    <div class="statusbar">
+      <span id="status-batters">no data</span>
+      <span id="status-pitchers">no data</span>
+      <span id="status-dk">no salaries</span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="batters">Batters</button>
+    <button class="tab" data-tab="pitchers">Pitchers</button>
+  </nav>
+
+  <section class="controls">
+    <input type="search" id="search" placeholder="Search player…">
+    <div class="splits">
+      <button class="split-btn active" data-split="all">All</button>
+      <button class="split-btn" data-split="vsL">vs LHP</button>
+      <button class="split-btn" data-split="vsR">vs RHP</button>
+    </div>
+    <label class="check"><input type="checkbox" id="slate-only"> DK slate only</label>
+    <label class="minsample"><span id="min-sample-label">Min BBE</span>
+      <input type="number" id="min-sample" min="1" value="1">
+    </label>
+  </section>
+
+  <main>
+    <div class="table-wrap">
+      <table id="data-table"></table>
+    </div>
+    <aside class="weights">
+      <div class="weights-head">
+        <h2>Rating Weights</h2>
+        <button id="reset-weights" class="ghost-btn">Reset</button>
+      </div>
+      <p class="hint">Each stat is scaled 0–100 across the player pool, then averaged by weight. ↓ = lower is better.</p>
+      <div id="weights-body"></div>
+    </aside>
+  </main>
+
+  <footer>
+    <p>Data: Baseball Savant statcast search exports · DraftKings lineup-builder salary CSV. Click a player row to expand their event history.</p>
+  </footer>
+
+  <script src="js/csv.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/dk.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
