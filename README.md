@@ -11,8 +11,12 @@ repo on GitHub Pages.
 1. **Batter Savant CSV** — upload a statcast search export for batters
    (event-level data). Repeated player rows are averaged into one line per
    player: Avg/Max EV, Avg LA, Barrel%, HardHit%, SweetSpot%, Avg Distance,
-   HR, XBH, Hits. Both the cleaned column subset and the full raw Savant
-   export work — extra columns are ignored.
+   plus raw counts — hard-hit balls (total and trailing 5/10/15-day windows,
+   measured back from the most recent game date in the file), HR, XBH, Hits,
+   Field Outs, and Strikeouts. Complete at-bat data works too: strikeouts and
+   walks carry no launch data, so they add to the counts without diluting the
+   averages. Both the cleaned column subset and the full raw Savant export
+   work — extra columns are ignored.
 2. **Pitcher Savant CSV** — upload a statcast search export for pitchers
    (pitch-level data). Aggregated per pitcher: K%, BB%, Whiff%, CSW%,
    Avg Velo, EV Against, HardHit% Against, HR/Hits allowed.

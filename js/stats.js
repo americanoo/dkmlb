@@ -40,19 +40,33 @@
   var WHIFF_DESCRIPTIONS = { swinging_strike: 1, swinging_strike_blocked: 1, missed_bunt: 1 };
   var CSW_DESCRIPTIONS = { called_strike: 1, swinging_strike: 1, swinging_strike_blocked: 1 };
 
-  /* ---- Batters: rows are batted-ball (or PA-result) events ---- */
+  function dayNum(dateStr) {
+    if (!dateStr) return null;
+    var t = Date.parse(dateStr + "T00:00:00Z");
+    return isNaN(t) ? null : Math.floor(t / 86400000);
+  }
+
+  /* ---- Batters: rows are batted-ball events, or complete at-bat data
+     (strikeouts/walks carry no launch data and don't dilute the averages).
+     Hard-hit counts are also bucketed into trailing 5/10/15-day windows,
+     measured back from the most recent game date in the upload. ---- */
   function aggregateBatters(rows) {
     var byPlayer = {};
+    var maxDay = null;
     rows.forEach(function (r) {
       var name = (r.player_name || "").trim();
       if (!name) return;
       (byPlayer[name] = byPlayer[name] || []).push(r);
+      var d = dayNum(r.game_date);
+      if (d !== null && (maxDay === null || d > maxDay)) maxDay = d;
     });
 
     return Object.keys(byPlayer).map(function (name) {
       var evts = byPlayer[name];
       var evs = [], las = [], dists = [];
-      var barrels = 0, hardHits = 0, sweetSpots = 0, hits = 0, hrs = 0, xbh = 0;
+      var barrels = 0, sweetSpots = 0, hits = 0, hrs = 0, xbh = 0;
+      var hardHits = 0, hh5 = 0, hh10 = 0, hh15 = 0;
+      var fieldOuts = 0, ks = 0, pa = 0;
 
       evts.forEach(function (r) {
         var ev = num(r.launch_speed);
@@ -60,7 +74,16 @@
         var d = num(r.hit_distance_sc);
         if (ev !== null) {
           evs.push(ev);
-          if (ev >= 95) hardHits++;
+          if (ev >= 95) {
+            hardHits++;
+            var day = dayNum(r.game_date);
+            if (day !== null && maxDay !== null) {
+              var back = maxDay - day;
+              if (back < 5) hh5++;
+              if (back < 10) hh10++;
+              if (back < 15) hh15++;
+            }
+          }
         }
         if (la !== null) {
           las.push(la);
@@ -69,16 +92,20 @@
         if (d !== null) dists.push(d);
         if (isBarrel(ev, la)) barrels++;
         var e = r.events;
+        if (e) pa++;
         if (HIT_EVENTS[e]) hits++;
         if (e === "home_run") hrs++;
         if (XBH_EVENTS[e]) xbh++;
+        if (e === "field_out") fieldOuts++;
+        if (e === "strikeout" || e === "strikeout_double_play") ks++;
       });
 
       var trackedEv = evs.length;
       return {
         name: name,
         events: evts,
-        bbe: evts.length,
+        pa: pa,
+        bbe: trackedEv,
         avg_ev: avg(evs),
         max_ev: max(evs),
         avg_la: avg(las),
@@ -86,9 +113,15 @@
         hardhit_pct: trackedEv ? (hardHits / trackedEv) * 100 : null,
         sweetspot_pct: las.length ? (sweetSpots / las.length) * 100 : null,
         avg_dist: avg(dists),
+        hh: hardHits,
+        hh5: hh5,
+        hh10: hh10,
+        hh15: hh15,
         hits: hits,
         hr: hrs,
-        xbh: xbh
+        xbh: xbh,
+        field_outs: fieldOuts,
+        k: ks
       };
     });
   }

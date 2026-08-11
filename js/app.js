@@ -16,6 +16,10 @@
     { key: "rating", label: "Rating", type: "num1" },
     { key: "value", label: "Value", type: "num2", dk: true },
     { key: "bbe", label: "BBE", type: "int" },
+    { key: "hh", label: "HH", type: "int" },
+    { key: "hh5", label: "HH 5d", type: "int" },
+    { key: "hh10", label: "HH 10d", type: "int" },
+    { key: "hh15", label: "HH 15d", type: "int" },
     { key: "avg_ev", label: "Avg EV", type: "num1" },
     { key: "max_ev", label: "Max EV", type: "num1" },
     { key: "avg_la", label: "Avg LA", type: "num1" },
@@ -25,7 +29,9 @@
     { key: "avg_dist", label: "Avg Dist", type: "num0" },
     { key: "hr", label: "HR", type: "int" },
     { key: "xbh", label: "XBH", type: "int" },
-    { key: "hits", label: "Hits", type: "int" }
+    { key: "hits", label: "Hits", type: "int" },
+    { key: "field_outs", label: "FO", type: "int" },
+    { key: "k", label: "K", type: "int" }
   ];
 
   var BATTER_WEIGHTS = [
@@ -33,11 +39,14 @@
     { key: "hardhit_pct", label: "HardHit%", weight: 9 },
     { key: "avg_ev", label: "Avg EV", weight: 8 },
     { key: "hr", label: "Home Runs", weight: 7 },
+    { key: "hh5", label: "Hard Hits last 5d", weight: 7 },
+    { key: "hh", label: "Hard Hits total", weight: 6 },
     { key: "max_ev", label: "Max EV", weight: 6 },
     { key: "xbh", label: "Extra-Base Hits", weight: 6 },
     { key: "sweetspot_pct", label: "SweetSpot%", weight: 5 },
     { key: "avg_dist", label: "Avg Distance", weight: 4 },
-    { key: "hits", label: "Hits", weight: 3 }
+    { key: "hits", label: "Hits", weight: 3 },
+    { key: "k", label: "Strikeouts", weight: 0, invert: true }
   ];
 
   var PITCHER_COLUMNS = [
