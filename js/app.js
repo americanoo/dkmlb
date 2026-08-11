@@ -135,21 +135,36 @@
     try { localStorage.setItem("dkmlb_weights_" + kind, JSON.stringify(obj)); } catch (e) { /* ignore */ }
   }
 
+  var DATA_KEYS = ["batters", "pitchers", "dk", "vegas"];
+
   function persistData(key, rows) {
-    try { localStorage.setItem("dkmlb_" + key, JSON.stringify(rows)); } catch (e) { /* quota - skip */ }
+    Store.set("dkmlb_" + key, rows).catch(function (e) {
+      alert("Could not save " + key + " data for next visit (" + (e && e.message ? e.message : e) +
+        "). The data still works for this session; you may need to re-upload after a refresh.");
+    });
   }
 
+  /* Restore saved data (async). Data saved by older versions in localStorage
+     is migrated into the main store on first load. */
   function restoreData() {
-    ["batters", "pitchers", "dk", "vegas"].forEach(function (key) {
-      try {
-        var raw = localStorage.getItem("dkmlb_" + key);
-        if (!raw) return;
-        var rows = JSON.parse(raw);
+    return Promise.all(DATA_KEYS.map(function (key) {
+      var full = "dkmlb_" + key;
+      return Store.get(full).then(function (rows) {
+        if (rows === undefined && Store.backend === "IndexedDB") {
+          var legacy = localStorage.getItem(full);
+          if (legacy) {
+            try { rows = JSON.parse(legacy); } catch (e) { rows = undefined; }
+            if (rows !== undefined) {
+              Store.set(full, rows).then(function () { localStorage.removeItem(full); });
+            }
+          }
+        }
+        if (rows === undefined) return;
         if (key === "dk") state.dk = rows;
         else if (key === "vegas") state.vegas = rows;
         else state[key].rows = rows;
-      } catch (e) { /* ignore */ }
-    });
+      }).catch(function () { /* unreadable entry - start empty */ });
+    }));
   }
 
   /* ------------------------------------------------------------------ */
@@ -498,8 +513,6 @@
   }
 
   function init() {
-    restoreData();
-
     document.getElementById("file-batters").addEventListener("change", function () {
       handleFile(this, function (text) {
         var rows = cleanRows(CSV.parseObjects(text));
@@ -566,7 +579,10 @@
     });
     document.getElementById("clear-data").addEventListener("click", function () {
       if (!confirm("Clear all uploaded data stored in this browser?")) return;
-      ["batters", "pitchers", "dk", "vegas"].forEach(function (k) { localStorage.removeItem("dkmlb_" + k); });
+      DATA_KEYS.forEach(function (k) {
+        Store.del("dkmlb_" + k);
+        localStorage.removeItem("dkmlb_" + k);
+      });
       state.batters.rows = [];
       state.pitchers.rows = [];
       state.dk = [];
@@ -598,8 +614,10 @@
       vegasChanged();
     });
 
+    document.getElementById("storage-backend").textContent = Store.backend;
     updateSplitButtons();
     rebuildAll();
+    restoreData().then(rebuildAll);
   }
 
   function updateSplitButtons() {

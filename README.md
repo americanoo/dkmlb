@@ -56,7 +56,13 @@ Other tools:
 - Sortable columns (click a header, click again to reverse)
 - Handedness splits: batters vs LHP/RHP, pitchers vs LHB/RHB
 - Player search and minimum-sample filter (Min BBE / Min pitches)
-- Uploaded data persists in the browser between visits (`Clear data` wipes it)
+- Everything auto-saves in the browser and reloads on the next visit:
+  uploads and Vegas entries in IndexedDB (gigabyte-scale quota, so large
+  raw Savant exports fit; falls back to localStorage where IndexedDB is
+  unavailable, and data saved by older versions is migrated automatically),
+  weights in localStorage. A failed save shows an alert instead of failing
+  silently. `Clear data` wipes stored uploads. Storage is per browser and
+  per site address — a different device, browser, or host URL starts empty.
 
 ## Notes on the stats
 
