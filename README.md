@@ -11,12 +11,14 @@ repo on GitHub Pages.
 1. **Batter Savant CSV** — upload a statcast search export for batters
    (event-level data). Repeated player rows are averaged into one line per
    player: Avg/Max EV, Avg LA, Barrel%, HardHit%, SweetSpot%, Avg Distance,
-   plus raw counts — hard-hit balls (total and trailing 5/10/15-day windows,
-   measured back from the most recent game date in the file), HR, XBH, Hits,
-   Field Outs, and Strikeouts. Complete at-bat data works too: strikeouts and
-   walks carry no launch data, so they add to the counts without diluting the
-   averages. Both the cleaned column subset and the full raw Savant export
-   work — extra columns are ignored.
+   plus raw counts over the full timeframe of the upload — pitches seen,
+   batted-ball events, hard-hit balls (95+ mph), HR, XBH, Hits, Field Outs,
+   and Strikeouts. Complete pitch-level or at-bat data works too:
+   strikeouts and walks carry no launch data, so they add to the counts
+   without diluting the averages. Both the cleaned column subset and the
+   full raw Savant export work — extra columns are ignored. (With a
+   batted-ball-only export, Pitches equals BBE by construction; upload
+   all-pitch data to get true pitches seen.)
 2. **Pitcher Savant CSV** — upload a statcast search export for pitchers
    (pitch-level data). Aggregated per pitcher: K%, BB%, Whiff%, CSW%,
    Avg Velo, EV Against, HardHit% Against, HR/Hits allowed.
@@ -34,22 +36,21 @@ repo on GitHub Pages.
    pythagorean expectation). Entries save automatically in the browser and
    join to players by DK team abbreviation: batters get their team's
    implied total, O/U, ML, Bets% and Handle%; pitchers get the same plus
-   the opponent's implied total. New rating weights: Implied Team Total
-   (batters, default 8), Bets%/Handle% (batters, default 0), Opp Implied
-   Total (pitchers, default 8, inverted) and Moneyline (pitchers,
-   inverted).
+   the opponent's implied total. Matching rating weights are available for
+   Implied Team Total, Bets% and Handle% (batters) and Opp Implied Total
+   and Moneyline (pitchers, inverted).
 
 Click any player row to expand their full event history, sorted by date
 (newest first). Pitcher history shows plate-appearance results.
 
 ## Rating system
 
-Every stat in the weights panel has a weight from 0–10. Each weighted stat
-is min-max scaled to 0–100 across the current player pool (stats marked ↓,
-like EV Against, are inverted so lower is better), then combined as a
-weighted average into a single 0–100 rating. Adjust the sliders to match
-your own priorities — weights are saved in your browser and ratings update
-live.
+Every stat in the weights panel has a weight from 0–10, and all weights
+start at 0 — the rating stays blank until you raise the stats you care
+about. Each weighted stat is min-max scaled across the current player pool
+(stats marked ↓, like EV Against, are inverted so lower is better), then
+combined as a weighted average into a single 1–10 rating (worst 1, best
+10). Weights are saved in your browser and ratings update live.
 
 Other tools:
 

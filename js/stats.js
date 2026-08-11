@@ -40,32 +40,22 @@
   var WHIFF_DESCRIPTIONS = { swinging_strike: 1, swinging_strike_blocked: 1, missed_bunt: 1 };
   var CSW_DESCRIPTIONS = { called_strike: 1, swinging_strike: 1, swinging_strike_blocked: 1 };
 
-  function dayNum(dateStr) {
-    if (!dateStr) return null;
-    var t = Date.parse(dateStr + "T00:00:00Z");
-    return isNaN(t) ? null : Math.floor(t / 86400000);
-  }
-
-  /* ---- Batters: rows are batted-ball events, or complete at-bat data
-     (strikeouts/walks carry no launch data and don't dilute the averages).
-     Hard-hit counts are also bucketed into trailing 5/10/15-day windows,
-     measured back from the most recent game date in the upload. ---- */
+  /* ---- Batters: rows are batted-ball events, or complete pitch-level /
+     at-bat data (strikeouts/walks carry no launch data and don't dilute
+     the averages). Counts cover the full timeframe of the upload. ---- */
   function aggregateBatters(rows) {
     var byPlayer = {};
-    var maxDay = null;
     rows.forEach(function (r) {
       var name = (r.player_name || "").trim();
       if (!name) return;
       (byPlayer[name] = byPlayer[name] || []).push(r);
-      var d = dayNum(r.game_date);
-      if (d !== null && (maxDay === null || d > maxDay)) maxDay = d;
     });
 
     return Object.keys(byPlayer).map(function (name) {
       var evts = byPlayer[name];
       var evs = [], las = [], dists = [];
       var barrels = 0, sweetSpots = 0, hits = 0, hrs = 0, xbh = 0;
-      var hardHits = 0, hh5 = 0, hh10 = 0, hh15 = 0;
+      var hardHits = 0;
       var fieldOuts = 0, ks = 0, pa = 0;
 
       evts.forEach(function (r) {
@@ -74,16 +64,7 @@
         var d = num(r.hit_distance_sc);
         if (ev !== null) {
           evs.push(ev);
-          if (ev >= 95) {
-            hardHits++;
-            var day = dayNum(r.game_date);
-            if (day !== null && maxDay !== null) {
-              var back = maxDay - day;
-              if (back < 5) hh5++;
-              if (back < 10) hh10++;
-              if (back < 15) hh15++;
-            }
-          }
+          if (ev >= 95) hardHits++;
         }
         if (la !== null) {
           las.push(la);
@@ -104,6 +85,7 @@
       return {
         name: name,
         events: evts,
+        pitches: evts.length,
         pa: pa,
         bbe: trackedEv,
         avg_ev: avg(evs),
@@ -114,9 +96,6 @@
         sweetspot_pct: las.length ? (sweetSpots / las.length) * 100 : null,
         avg_dist: avg(dists),
         hh: hardHits,
-        hh5: hh5,
-        hh10: hh10,
-        hh15: hh15,
         hits: hits,
         hr: hrs,
         xbh: xbh,
@@ -184,8 +163,9 @@
     });
   }
 
-  /* ---- Rating: weighted average of each stat min-max scaled to 0-100
-     across the supplied player pool. weightDefs: [{key, weight, invert}] ---- */
+  /* ---- Rating: weighted average of each stat min-max scaled across the
+     supplied player pool, expressed on a 1-10 scale (worst 1, best 10).
+     weightDefs: [{key, weight, invert}] ---- */
   function computeRatings(players, weightDefs) {
     var ranges = {};
     weightDefs.forEach(function (w) {
@@ -206,12 +186,12 @@
         var range = ranges[w.key];
         if (v === null || v === undefined || !range) return;
         var span = range.max - range.min;
-        var scaled = span === 0 ? 50 : ((v - range.min) / span) * 100;
-        if (w.invert) scaled = 100 - scaled;
+        var scaled = span === 0 ? 0.5 : (v - range.min) / span;
+        if (w.invert) scaled = 1 - scaled;
         sum += scaled * w.weight;
         totalW += w.weight;
       });
-      p.rating = totalW ? sum / totalW : null;
+      p.rating = totalW ? 1 + (sum / totalW) * 9 : null;
       p.value = p.rating !== null && p.salary ? (p.rating / p.salary) * 1000 : null;
     });
     return players;

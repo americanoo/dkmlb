@@ -20,11 +20,9 @@
     { key: "ml", label: "ML", type: "ml", vegas: true },
     { key: "bets", label: "Bets%", type: "pct", vegas: true },
     { key: "handle", label: "Handle%", type: "pct", vegas: true },
+    { key: "pitches", label: "Pitches", type: "int" },
     { key: "bbe", label: "BBE", type: "int" },
     { key: "hh", label: "HH", type: "int" },
-    { key: "hh5", label: "HH 5d", type: "int" },
-    { key: "hh10", label: "HH 10d", type: "int" },
-    { key: "hh15", label: "HH 15d", type: "int" },
     { key: "avg_ev", label: "Avg EV", type: "num1" },
     { key: "max_ev", label: "Max EV", type: "num1" },
     { key: "avg_la", label: "Avg LA", type: "num1" },
@@ -40,19 +38,18 @@
   ];
 
   var BATTER_WEIGHTS = [
-    { key: "barrel_pct", label: "Barrel%", weight: 10 },
-    { key: "hardhit_pct", label: "HardHit%", weight: 9 },
-    { key: "avg_ev", label: "Avg EV", weight: 8 },
-    { key: "hr", label: "Home Runs", weight: 7 },
-    { key: "hh5", label: "Hard Hits last 5d", weight: 7 },
-    { key: "hh", label: "Hard Hits total", weight: 6 },
-    { key: "max_ev", label: "Max EV", weight: 6 },
-    { key: "xbh", label: "Extra-Base Hits", weight: 6 },
-    { key: "sweetspot_pct", label: "SweetSpot%", weight: 5 },
-    { key: "avg_dist", label: "Avg Distance", weight: 4 },
-    { key: "hits", label: "Hits", weight: 3 },
+    { key: "barrel_pct", label: "Barrel%", weight: 0 },
+    { key: "hardhit_pct", label: "HardHit%", weight: 0 },
+    { key: "hh", label: "Hard-Hit Balls", weight: 0 },
+    { key: "avg_ev", label: "Avg EV", weight: 0 },
+    { key: "hr", label: "Home Runs", weight: 0 },
+    { key: "max_ev", label: "Max EV", weight: 0 },
+    { key: "xbh", label: "Extra-Base Hits", weight: 0 },
+    { key: "sweetspot_pct", label: "SweetSpot%", weight: 0 },
+    { key: "avg_dist", label: "Avg Distance", weight: 0 },
+    { key: "hits", label: "Hits", weight: 0 },
     { key: "k", label: "Strikeouts", weight: 0, invert: true },
-    { key: "itt_eff", label: "Implied Team Total", weight: 8 },
+    { key: "itt_eff", label: "Implied Team Total", weight: 0 },
     { key: "bets", label: "Bets% on team", weight: 0 },
     { key: "handle", label: "Handle% on team", weight: 0 }
   ];
@@ -84,16 +81,16 @@
   ];
 
   var PITCHER_WEIGHTS = [
-    { key: "k_pct", label: "K%", weight: 10 },
-    { key: "whiff_pct", label: "Whiff%", weight: 9 },
-    { key: "csw_pct", label: "CSW%", weight: 8 },
-    { key: "ev_against", label: "EV Against", weight: 7, invert: true },
-    { key: "hardhit_against_pct", label: "HardHit% Against", weight: 6, invert: true },
-    { key: "hr_allowed", label: "HR Allowed", weight: 6, invert: true },
-    { key: "bb_pct", label: "BB%", weight: 5, invert: true },
-    { key: "avg_velo", label: "Avg Velo", weight: 4 },
-    { key: "opp_itt", label: "Opp Implied Total", weight: 8, invert: true },
-    { key: "ml", label: "Moneyline (win odds)", weight: 3, invert: true }
+    { key: "k_pct", label: "K%", weight: 0 },
+    { key: "whiff_pct", label: "Whiff%", weight: 0 },
+    { key: "csw_pct", label: "CSW%", weight: 0 },
+    { key: "ev_against", label: "EV Against", weight: 0, invert: true },
+    { key: "hardhit_against_pct", label: "HardHit% Against", weight: 0, invert: true },
+    { key: "hr_allowed", label: "HR Allowed", weight: 0, invert: true },
+    { key: "bb_pct", label: "BB%", weight: 0, invert: true },
+    { key: "avg_velo", label: "Avg Velo", weight: 0 },
+    { key: "opp_itt", label: "Opp Implied Total", weight: 0, invert: true },
+    { key: "ml", label: "Moneyline (win odds)", weight: 0, invert: true }
   ];
 
   /* ------------------------------------------------------------------ */
@@ -116,9 +113,13 @@
     pitchers: loadWeights("pitchers", PITCHER_WEIGHTS)
   };
 
+  /* v2: ratings moved to a 1-10 scale with all default weights at 0;
+     the key bump discards weight sets saved under the old scheme. */
+  var WEIGHTS_KEY = "dkmlb_weights_v2_";
+
   function loadWeights(kind, defaults) {
     try {
-      var saved = JSON.parse(localStorage.getItem("dkmlb_weights_" + kind));
+      var saved = JSON.parse(localStorage.getItem(WEIGHTS_KEY + kind));
       if (saved) {
         return defaults.map(function (d) {
           var s = saved[d.key];
@@ -132,7 +133,7 @@
   function saveWeights(kind) {
     var obj = {};
     weights[kind].forEach(function (w) { obj[w.key] = w.weight; });
-    try { localStorage.setItem("dkmlb_weights_" + kind, JSON.stringify(obj)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(WEIGHTS_KEY + kind, JSON.stringify(obj)); } catch (e) { /* ignore */ }
   }
 
   var DATA_KEYS = ["batters", "pitchers", "dk", "vegas"];
