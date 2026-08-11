@@ -25,6 +25,19 @@ repo on GitHub Pages.
    accents, and suffixes like Jr.) and get Salary, Position, Team, DK Avg
    points, and a **Value** column (rating per $1k of salary). A
    "DK slate only" checkbox filters to just the slate.
+4. **Vegas tab** — an editable grid for manually entered Vegas data, one row
+   per team side: game total (O/U), moneyline, implied team total, and the
+   % of bets / % of handle on that side. "Build matchups from DK slate"
+   prefills the team/opponent rows from the salary file's Game Info column.
+   Leave Implied Total blank and it is estimated from the O/U and both
+   moneylines (de-vigged win probability run through an inverted
+   pythagorean expectation). Entries save automatically in the browser and
+   join to players by DK team abbreviation: batters get their team's
+   implied total, O/U, ML, Bets% and Handle%; pitchers get the same plus
+   the opponent's implied total. New rating weights: Implied Team Total
+   (batters, default 8), Bets%/Handle% (batters, default 0), Opp Implied
+   Total (pitchers, default 8, inverted) and Moneyline (pitchers,
+   inverted).
 
 Click any player row to expand their full event history, sorted by date
 (newest first). Pitcher history shows plate-appearance results.

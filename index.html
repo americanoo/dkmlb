@@ -28,12 +28,14 @@
       <span id="status-batters">no data</span>
       <span id="status-pitchers">no data</span>
       <span id="status-dk">no salaries</span>
+      <span id="status-vegas">no vegas data</span>
     </div>
   </header>
 
   <nav class="tabs">
     <button class="tab active" data-tab="batters">Batters</button>
     <button class="tab" data-tab="pitchers">Pitchers</button>
+    <button class="tab" data-tab="vegas">Vegas</button>
   </nav>
 
   <section class="controls">
@@ -49,7 +51,21 @@
     </label>
   </section>
 
-  <main>
+  <section id="vegas-panel" style="display:none">
+    <div class="vegas-toolbar">
+      <button id="vegas-from-dk" class="upload-btn as-button">Build matchups from DK slate</button>
+      <button id="vegas-add-row" class="ghost-btn">Add row</button>
+      <button id="vegas-clear" class="ghost-btn">Clear Vegas data</button>
+      <span class="hint">Enter the game total (O/U), each team's moneyline, implied team total, and the
+        %-of-bets / %-of-handle on that side. Leave Implied blank to auto-estimate it from the O/U and
+        both moneylines. Data saves automatically and joins to players by DK team abbreviation.</span>
+    </div>
+    <div class="table-wrap">
+      <table id="vegas-table"></table>
+    </div>
+  </section>
+
+  <main id="main-data">
     <div class="table-wrap">
       <table id="data-table"></table>
     </div>
@@ -70,6 +86,7 @@
   <script src="js/csv.js"></script>
   <script src="js/stats.js"></script>
   <script src="js/dk.js"></script>
+  <script src="js/vegas.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

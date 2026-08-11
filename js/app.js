@@ -15,6 +15,11 @@
     { key: "avgPoints", label: "DK Avg", type: "num1", dk: true },
     { key: "rating", label: "Rating", type: "num1" },
     { key: "value", label: "Value", type: "num2", dk: true },
+    { key: "itt_eff", label: "Imp Tot", type: "num1", vegas: true },
+    { key: "ou", label: "O/U", type: "num1", vegas: true },
+    { key: "ml", label: "ML", type: "ml", vegas: true },
+    { key: "bets", label: "Bets%", type: "pct", vegas: true },
+    { key: "handle", label: "Handle%", type: "pct", vegas: true },
     { key: "bbe", label: "BBE", type: "int" },
     { key: "hh", label: "HH", type: "int" },
     { key: "hh5", label: "HH 5d", type: "int" },
@@ -46,7 +51,10 @@
     { key: "sweetspot_pct", label: "SweetSpot%", weight: 5 },
     { key: "avg_dist", label: "Avg Distance", weight: 4 },
     { key: "hits", label: "Hits", weight: 3 },
-    { key: "k", label: "Strikeouts", weight: 0, invert: true }
+    { key: "k", label: "Strikeouts", weight: 0, invert: true },
+    { key: "itt_eff", label: "Implied Team Total", weight: 8 },
+    { key: "bets", label: "Bets% on team", weight: 0 },
+    { key: "handle", label: "Handle% on team", weight: 0 }
   ];
 
   var PITCHER_COLUMNS = [
@@ -57,6 +65,11 @@
     { key: "avgPoints", label: "DK Avg", type: "num1", dk: true },
     { key: "rating", label: "Rating", type: "num1" },
     { key: "value", label: "Value", type: "num2", dk: true },
+    { key: "opp_itt", label: "Opp Imp Tot", type: "num1", vegas: true },
+    { key: "ou", label: "O/U", type: "num1", vegas: true },
+    { key: "ml", label: "ML", type: "ml", vegas: true },
+    { key: "bets", label: "Bets%", type: "pct", vegas: true },
+    { key: "handle", label: "Handle%", type: "pct", vegas: true },
     { key: "pitches", label: "Pitches", type: "int" },
     { key: "pa", label: "PA", type: "int" },
     { key: "k_pct", label: "K%", type: "pct" },
@@ -78,7 +91,9 @@
     { key: "hardhit_against_pct", label: "HardHit% Against", weight: 6, invert: true },
     { key: "hr_allowed", label: "HR Allowed", weight: 6, invert: true },
     { key: "bb_pct", label: "BB%", weight: 5, invert: true },
-    { key: "avg_velo", label: "Avg Velo", weight: 4 }
+    { key: "avg_velo", label: "Avg Velo", weight: 4 },
+    { key: "opp_itt", label: "Opp Implied Total", weight: 8, invert: true },
+    { key: "ml", label: "Moneyline (win odds)", weight: 3, invert: true }
   ];
 
   /* ------------------------------------------------------------------ */
@@ -90,6 +105,7 @@
     batters: { rows: [], players: [], sortKey: "rating", sortDir: -1, split: "all", expanded: {} },
     pitchers: { rows: [], players: [], sortKey: "rating", sortDir: -1, split: "all", expanded: {} },
     dk: [],
+    vegas: [],
     search: "",
     slateOnly: false,
     minSample: { batters: 1, pitchers: 1 }
@@ -124,12 +140,13 @@
   }
 
   function restoreData() {
-    ["batters", "pitchers", "dk"].forEach(function (key) {
+    ["batters", "pitchers", "dk", "vegas"].forEach(function (key) {
       try {
         var raw = localStorage.getItem("dkmlb_" + key);
         if (!raw) return;
         var rows = JSON.parse(raw);
         if (key === "dk") state.dk = rows;
+        else if (key === "vegas") state.vegas = rows;
         else state[key].rows = rows;
       } catch (e) { /* ignore */ }
     });
@@ -154,6 +171,7 @@
     var rows = splitFilter(kind, s.rows);
     s.players = kind === "batters" ? Stats.aggregateBatters(rows) : Stats.aggregatePitchers(rows);
     if (state.dk.length) DK.matchSalaries(s.players, state.dk);
+    Vegas.attach(s.players, state.vegas, kind);
     Stats.computeRatings(s.players, weights[kind]);
     render();
   }
@@ -175,6 +193,7 @@
       case "num0": return Number(v).toFixed(0);
       case "num1": return Number(v).toFixed(1);
       case "num2": return Number(v).toFixed(2);
+      case "ml": return Number(v) > 0 ? "+" + Number(v) : String(Number(v));
       case "int": return String(v);
       default: return String(v);
     }
@@ -193,6 +212,14 @@
   function render() {
     var kind = state.tab;
     renderStatusBar();
+    var isVegas = kind === "vegas";
+    document.getElementById("main-data").style.display = isVegas ? "none" : "";
+    document.getElementById("vegas-panel").style.display = isVegas ? "" : "none";
+    document.querySelector(".controls").style.display = isVegas ? "none" : "";
+    if (isVegas) {
+      renderVegas();
+      return;
+    }
     renderWeights(kind);
     renderTable(kind);
   }
@@ -207,11 +234,15 @@
       p ? p.toLocaleString() + " pitcher events · " + state.pitchers.players.length + " players" : "no data";
     var dkStatus = "no salaries";
     if (d) {
+      var tabKind = state.tab === "vegas" ? "batters" : state.tab;
       var matched = 0;
-      state[state.tab].players.forEach(function (pl) { if (pl.onSlate) matched++; });
-      dkStatus = d + " DK players · " + matched + " matched on this tab";
+      state[tabKind].players.forEach(function (pl) { if (pl.onSlate) matched++; });
+      dkStatus = d + " DK players · " + matched + " matched";
     }
     document.getElementById("status-dk").textContent = dkStatus;
+    var v = state.vegas.length;
+    document.getElementById("status-vegas").textContent =
+      v ? v + " Vegas team rows" : "no vegas data";
   }
 
   function renderWeights(kind) {
@@ -266,7 +297,12 @@
     var s = state[kind];
     var players = visiblePlayers(kind);
     var hasDK = state.dk.length > 0;
-    var showCols = cols.filter(function (c) { return !c.dk || hasDK; });
+    var hasVegas = state.vegas.length > 0;
+    var showCols = cols.filter(function (c) {
+      if (c.dk && !hasDK) return false;
+      if (c.vegas && !hasVegas) return false;
+      return true;
+    });
 
     var html = "<thead><tr>";
     showCols.forEach(function (c) {
@@ -356,6 +392,81 @@
     });
     html += "</tbody></table></div>";
     return html;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Vegas editor: editable grid of manually entered matchup data        */
+  /* ------------------------------------------------------------------ */
+
+  var VEGAS_FIELDS = [
+    { key: "team", label: "Team", kind: "text", ph: "e.g. LAD" },
+    { key: "opp", label: "Opp", kind: "text", ph: "e.g. KC" },
+    { key: "ou", label: "O/U", kind: "number", step: "0.5", ph: "8.5" },
+    { key: "ml", label: "Moneyline", kind: "number", step: "5", ph: "-150" },
+    { key: "itt", label: "Implied Total", kind: "number", step: "0.1", ph: "auto" },
+    { key: "bets", label: "Bets %", kind: "number", step: "1", ph: "55" },
+    { key: "handle", label: "Handle %", kind: "number", step: "1", ph: "62" }
+  ];
+
+  function persistVegas() {
+    persistData("vegas", state.vegas);
+  }
+
+  function vegasChanged() {
+    persistVegas();
+    rebuild("batters");
+    rebuild("pitchers");
+  }
+
+  function renderVegas() {
+    var table = document.getElementById("vegas-table");
+    var byTeam = {};
+    state.vegas.forEach(function (r) {
+      var t = Vegas.normTeam(r.team);
+      if (t) byTeam[t] = r;
+    });
+
+    var html = "<thead><tr>";
+    VEGAS_FIELDS.forEach(function (f) { html += "<th>" + esc(f.label) + "</th>"; });
+    html += "<th>Est. Implied</th><th></th></tr></thead><tbody>";
+
+    state.vegas.forEach(function (row, i) {
+      html += "<tr>";
+      VEGAS_FIELDS.forEach(function (f) {
+        html +=
+          '<td><input class="vegas-input ' + (f.kind === "text" ? "vt" : "vn") + '" type="' + f.kind +
+          '"' + (f.step ? ' step="' + f.step + '"' : "") +
+          ' data-row="' + i + '" data-key="' + f.key + '" value="' + esc(row[f.key]) +
+          '" placeholder="' + f.ph + '"></td>';
+      });
+      var est = Vegas.estimateITT(row, byTeam);
+      html += '<td class="n est">' + (est === null ? "—" : est.toFixed(2)) + "</td>";
+      html += '<td><button class="ghost-btn del-row" data-row="' + i + '" title="Delete row">✕</button></td>';
+      html += "</tr>";
+    });
+    html += "</tbody>";
+    if (!state.vegas.length) {
+      html += '<tbody><tr><td colspan="' + (VEGAS_FIELDS.length + 2) +
+        '" class="empty">No matchups yet — build them from the DK slate or add rows manually.</td></tr></tbody>';
+    }
+    table.innerHTML = html;
+
+    table.querySelectorAll("input.vegas-input").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var r = parseInt(input.getAttribute("data-row"), 10);
+        var key = input.getAttribute("data-key");
+        state.vegas[r][key] = key === "team" || key === "opp"
+          ? Vegas.normTeam(input.value)
+          : input.value.trim();
+        vegasChanged();
+      });
+    });
+    table.querySelectorAll("button.del-row").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.vegas.splice(parseInt(btn.getAttribute("data-row"), 10), 1);
+        vegasChanged();
+      });
+    });
   }
 
   /* ------------------------------------------------------------------ */
@@ -455,11 +566,36 @@
     });
     document.getElementById("clear-data").addEventListener("click", function () {
       if (!confirm("Clear all uploaded data stored in this browser?")) return;
-      ["batters", "pitchers", "dk"].forEach(function (k) { localStorage.removeItem("dkmlb_" + k); });
+      ["batters", "pitchers", "dk", "vegas"].forEach(function (k) { localStorage.removeItem("dkmlb_" + k); });
       state.batters.rows = [];
       state.pitchers.rows = [];
       state.dk = [];
+      state.vegas = [];
       rebuildAll();
+    });
+
+    document.getElementById("vegas-from-dk").addEventListener("click", function () {
+      if (!state.dk.length) {
+        alert("Upload the DK Salaries CSV first — matchups are read from its Game Info column.");
+        return;
+      }
+      var built = Vegas.buildFromDK(state.dk);
+      var existing = {};
+      state.vegas.forEach(function (r) { existing[Vegas.normTeam(r.team)] = true; });
+      built.forEach(function (r) {
+        if (!existing[Vegas.normTeam(r.team)]) state.vegas.push(r);
+      });
+      vegasChanged();
+    });
+    document.getElementById("vegas-add-row").addEventListener("click", function () {
+      state.vegas.push({ team: "", opp: "", ou: "", ml: "", itt: "", bets: "", handle: "" });
+      persistVegas();
+      renderVegas();
+    });
+    document.getElementById("vegas-clear").addEventListener("click", function () {
+      if (!confirm("Remove all Vegas rows?")) return;
+      state.vegas = [];
+      vegasChanged();
     });
 
     updateSplitButtons();
@@ -468,6 +604,7 @@
 
   function updateSplitButtons() {
     var kind = state.tab;
+    if (kind === "vegas") return;
     var labels = kind === "batters"
       ? { all: "All", vsL: "vs LHP", vsR: "vs RHP" }
       : { all: "All", vsL: "vs LHB", vsR: "vs RHB" };

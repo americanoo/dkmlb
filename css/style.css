@@ -173,6 +173,35 @@ main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; }
 .weight-row .wval { text-align: right; color: var(--accent); font-variant-numeric: tabular-nums; }
 input[type="range"] { accent-color: var(--accent); }
 
+#vegas-panel { padding: 16px 20px 0; }
+.vegas-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.vegas-toolbar .hint { flex-basis: 100%; margin: 4px 0 0; }
+.as-button { border: none; font: inherit; font-weight: 600; }
+
+#vegas-table { border-collapse: collapse; width: 100%; }
+#vegas-table th {
+  background: var(--panel-2);
+  color: var(--muted);
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+#vegas-table td { padding: 5px 8px; border-bottom: 1px solid rgba(42, 54, 80, 0.5); }
+#vegas-table td.est { color: var(--muted); font-variant-numeric: tabular-nums; }
+.vegas-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 5px;
+  width: 100%;
+}
+.vegas-input.vt { width: 84px; text-transform: uppercase; }
+.vegas-input.vn { width: 96px; }
+.vegas-input:focus { outline: none; border-color: var(--accent); }
+.del-row { padding: 4px 9px; }
+
 footer { padding: 8px 20px 20px; color: var(--muted); font-size: 12px; }
 
 @media (max-width: 900px) {
