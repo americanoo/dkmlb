@@ -108,26 +108,37 @@
     minSample: { batters: 1, pitchers: 1 }
   };
 
+  /* v3: weights are a shared 10-point budget per tab; the key bump
+     discards weight sets saved under earlier schemes. */
+  var WEIGHTS_KEY = "dkmlb_weights_v3_";
+  var WEIGHT_BUDGET = 10;
+
   var weights = {
     batters: loadWeights("batters", BATTER_WEIGHTS),
     pitchers: loadWeights("pitchers", PITCHER_WEIGHTS)
   };
 
-  /* v2: ratings moved to a 1-10 scale with all default weights at 0;
-     the key bump discards weight sets saved under the old scheme. */
-  var WEIGHTS_KEY = "dkmlb_weights_v2_";
-
   function loadWeights(kind, defaults) {
+    var list = defaults.map(function (d) { return Object.assign({}, d); });
     try {
       var saved = JSON.parse(localStorage.getItem(WEIGHTS_KEY + kind));
       if (saved) {
-        return defaults.map(function (d) {
-          var s = saved[d.key];
-          return { key: d.key, label: d.label, invert: d.invert, weight: typeof s === "number" ? s : d.weight };
+        list.forEach(function (w) {
+          if (typeof saved[w.key] === "number") w.weight = saved[w.key];
         });
       }
     } catch (e) { /* ignore */ }
-    return defaults.map(function (d) { return Object.assign({}, d); });
+    /* Enforce the budget even against hand-edited storage. */
+    var spent = 0;
+    list.forEach(function (w) {
+      w.weight = Math.max(0, Math.min(w.weight, WEIGHT_BUDGET - spent));
+      spent += w.weight;
+    });
+    return list;
+  }
+
+  function weightTotal(kind) {
+    return weights[kind].reduce(function (t, w) { return t + w.weight; }, 0);
   }
 
   function saveWeights(kind) {
@@ -263,12 +274,13 @@
 
   function renderWeights(kind) {
     var panel = document.getElementById("weights-body");
-    var html = "";
+    var html = '<div class="points-left">Points left: <b id="points-left">' +
+      (WEIGHT_BUDGET - weightTotal(kind)) + "</b> / " + WEIGHT_BUDGET + "</div>";
     weights[kind].forEach(function (w, i) {
       html +=
         '<div class="weight-row">' +
         '<label for="w-' + i + '">' + esc(w.label) + (w.invert ? ' <span class="inv" title="Lower is better">↓</span>' : "") + "</label>" +
-        '<input id="w-' + i + '" type="range" min="0" max="10" step="1" value="' + w.weight + '" data-idx="' + i + '">' +
+        '<input id="w-' + i + '" type="range" min="0" max="' + WEIGHT_BUDGET + '" step="1" value="' + w.weight + '" data-idx="' + i + '">' +
         '<span class="wval">' + w.weight + "</span>" +
         "</div>";
     });
@@ -276,8 +288,13 @@
     panel.querySelectorAll("input[type=range]").forEach(function (input) {
       input.addEventListener("input", function () {
         var idx = parseInt(input.getAttribute("data-idx"), 10);
-        weights[kind][idx].weight = parseInt(input.value, 10);
-        input.nextElementSibling.textContent = input.value;
+        var requested = parseInt(input.value, 10);
+        var otherTotal = weightTotal(kind) - weights[kind][idx].weight;
+        var allowed = Math.min(requested, WEIGHT_BUDGET - otherTotal);
+        if (allowed !== requested) input.value = allowed;
+        weights[kind][idx].weight = allowed;
+        input.nextElementSibling.textContent = allowed;
+        document.getElementById("points-left").textContent = WEIGHT_BUDGET - weightTotal(kind);
         saveWeights(kind);
         var s = state[kind];
         Stats.computeRatings(s.players, weights[kind]);

@@ -45,12 +45,15 @@ Click any player row to expand their full event history, sorted by date
 
 ## Rating system
 
-Every stat in the weights panel has a weight from 0–10, and all weights
-start at 0 — the rating stays blank until you raise the stats you care
-about. Each weighted stat is min-max scaled across the current player pool
-(stats marked ↓, like EV Against, are inverted so lower is better), then
-combined as a weighted average into a single 1–10 rating (worst 1, best
-10). Weights are saved in your browser and ratings update live.
+The weights are a **10-point budget** per tab: spread up to 10 points
+across the stats, and maxing one stat at 10 leaves nothing for the rest —
+the sliders enforce it, and a "Points left" counter shows what remains.
+Each weighted stat is min-max scaled 0–1 across the current player pool
+(stats marked ↓, like EV Against, are inverted so lower is better), and
+every weight point buys up to one rating point, so a fully allocated
+budget rates players 0–10. All weights start at 0 — the rating stays
+blank until points are assigned. Weights are saved in your browser and
+ratings update live.
 
 Other tools:
 

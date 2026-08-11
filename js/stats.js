@@ -163,9 +163,10 @@
     });
   }
 
-  /* ---- Rating: weighted average of each stat min-max scaled across the
-     supplied player pool, expressed on a 1-10 scale (worst 1, best 10).
-     weightDefs: [{key, weight, invert}] ---- */
+  /* ---- Rating: the weights are a 10-point budget. Each stat is min-max
+     scaled 0-1 across the supplied player pool, and every weight point
+     buys up to one rating point, so a fully allocated budget yields a
+     0-10 rating. weightDefs: [{key, weight, invert}] ---- */
   function computeRatings(players, weightDefs) {
     var ranges = {};
     weightDefs.forEach(function (w) {
@@ -191,7 +192,7 @@
         sum += scaled * w.weight;
         totalW += w.weight;
       });
-      p.rating = totalW ? 1 + (sum / totalW) * 9 : null;
+      p.rating = totalW ? sum : null;
       p.value = p.rating !== null && p.salary ? (p.rating / p.salary) * 1000 : null;
     });
     return players;

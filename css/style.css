@@ -167,6 +167,9 @@ main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; }
 .weights h2 { margin: 0; font-size: 15px; }
 .hint { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
 
+.points-left { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; }
+.points-left b { color: var(--accent-2); font-size: 14px; }
+
 .weight-row { display: grid; grid-template-columns: 1fr 90px 20px; gap: 8px; align-items: center; margin-bottom: 8px; }
 .weight-row label { font-size: 12.5px; color: var(--text); }
 .weight-row .inv { color: var(--muted); }
