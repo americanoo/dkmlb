@@ -53,5 +53,6 @@ Other tools:
 ## Sample data
 
 `sample-data/` contains example exports for testing:
-`batters_savant_sample.csv`, `pitchers_savant_sample.csv`,
-`DKSalaries_sample.csv`.
+`batters_savant_sample.csv` (cleaned columns),
+`batters_savant_raw_sample.csv` (full raw Savant download — both work),
+`pitchers_savant_sample.csv`, `DKSalaries_sample.csv`.
