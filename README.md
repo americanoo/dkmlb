@@ -4,7 +4,53 @@ A zero-dependency static site for DraftKings MLB DFS research built around
 Baseball Savant statcast exports and the DraftKings salary CSV.
 
 Open `index.html` in a browser (no server or build step needed), or host the
-repo on GitHub Pages.
+repo on GitHub Pages. To pull stats straight from Baseball Savant instead of
+uploading CSVs, run the local stats server below.
+
+## Local stats server (pybaseball)
+
+A small Python server on your computer pulls Statcast data from Baseball
+Savant through [pybaseball](https://github.com/jldbc/pybaseball) and serves the
+site at http://localhost:8000.
+
+**Start it:** double-click `start-server.command` (Mac) or `start-server.bat`
+(Windows). The first run creates a private Python environment in
+`server/.venv` and installs pybaseball, which takes a minute; after that it
+starts in seconds and opens the site in your browser. Needs Python 3 from
+python.org. To run it by hand instead:
+
+```
+pip3 install -r server/requirements.txt
+python3 server/server.py            # --lan: also reachable from your phone on the same Wi-Fi
+```
+
+Leave the terminal window open while you use the site; close it (or Ctrl+C)
+to stop the server.
+
+When the server is running, the site shows a **Pull from Baseball Savant**
+panel:
+
+- **Batters / Pitchers date ranges** (defaults: last 8 days for batters,
+  last 30 for pitchers) and **Include postseason**. One click pulls every
+  pitch league-wide for each range, so batters get true pitches seen and
+  pitchers get full pitch-level data. Up to 45 days per pull.
+- Pulled days are cached in `server/cache/`, so a repeat or overlapping range
+  only downloads the days it hasn't seen. The most recent two days are always
+  re-downloaded, since Savant keeps correcting them after the games end.
+- If Savant fails on a day, the pull stops with a message naming the day;
+  the days that did load stay cached, so trying again is quick.
+
+The **Player Lookup** tab searches any player as a batter or pitcher over any
+date range (the last 15 days, this season, last season, or custom) and shows
+their Statcast line with every plate appearance. Lookups sit in their own
+table and don't affect the Batters/Pitchers tabs or ratings.
+
+**Batted balls: All / 95+ mph** (Batters tab). The 95+ setting matches a
+Savant search filtered to exit velo 95+: EV, LA, distance, barrels, HR, hits
+and field outs come from hard-hit balls in play only, while Pitches and K
+still count every pitch. "All batted balls" uses every ball in play, which
+makes HardHit% meaningful. Foul balls never count as batted balls, even
+though Statcast records exit velo on many of them.
 
 ## Workflow
 

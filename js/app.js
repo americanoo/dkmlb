@@ -103,10 +103,28 @@
     pitchers: { rows: [], players: [], sortKey: "rating", sortDir: -1, split: "all", expanded: {} },
     dk: [],
     vegas: [],
+    lookup: { entries: [], expanded: {} },
     search: "",
     slateOnly: false,
-    minSample: { batters: 1, pitchers: 1 }
+    minSample: { batters: 1, pitchers: 1 },
+    evFloor: loadPref("evFloor", 95),
+    api: false
   };
+
+  function loadPref(key, fallback) {
+    try {
+      var prefs = JSON.parse(localStorage.getItem("dkmlb_prefs")) || {};
+      return prefs[key] !== undefined ? prefs[key] : fallback;
+    } catch (e) { return fallback; }
+  }
+
+  function savePref(key, value) {
+    try {
+      var prefs = JSON.parse(localStorage.getItem("dkmlb_prefs")) || {};
+      prefs[key] = value;
+      localStorage.setItem("dkmlb_prefs", JSON.stringify(prefs));
+    } catch (e) { /* ignore */ }
+  }
 
   /* v3: weights are a shared 10-point budget per tab; the key bump
      discards weight sets saved under earlier schemes. */
@@ -147,7 +165,7 @@
     try { localStorage.setItem(WEIGHTS_KEY + kind, JSON.stringify(obj)); } catch (e) { /* ignore */ }
   }
 
-  var DATA_KEYS = ["batters", "pitchers", "dk", "vegas"];
+  var DATA_KEYS = ["batters", "pitchers", "dk", "vegas", "lookup"];
 
   function persistData(key, rows) {
     Store.set("dkmlb_" + key, rows).catch(function (e) {
@@ -174,6 +192,7 @@
         if (rows === undefined) return;
         if (key === "dk") state.dk = rows;
         else if (key === "vegas") state.vegas = rows;
+        else if (key === "lookup") state.lookup.entries = rows;
         else state[key].rows = rows;
       }).catch(function () { /* unreadable entry - start empty */ });
     }));
@@ -193,10 +212,33 @@
     return rows.filter(function (r) { return r.stand === hand; });
   }
 
+  /* With an EV floor set, batted-ball stats and history come from balls in
+     play at or above it (matching a Savant search filtered on exit velo),
+     while Pitches, PA and K still count every pitch the batter saw. */
+  function batterPlayers(rows) {
+    var all = Stats.aggregateBatters(rows);
+    var floor = state.evFloor;
+    if (!floor) return all;
+    var hard = rows.filter(function (r) {
+      var ev = Stats.num(r.launch_speed);
+      return Stats.isBattedBall(r) && ev !== null && ev >= floor;
+    });
+    var byName = {};
+    all.forEach(function (p) { byName[p.name] = p; });
+    var players = Stats.aggregateBatters(hard);
+    players.forEach(function (p) {
+      var a = byName[p.name];
+      p.pitches = a.pitches;
+      p.pa = a.pa;
+      p.k = a.k;
+    });
+    return players;
+  }
+
   function rebuild(kind) {
     var s = state[kind];
     var rows = splitFilter(kind, s.rows);
-    s.players = kind === "batters" ? Stats.aggregateBatters(rows) : Stats.aggregatePitchers(rows);
+    s.players = kind === "batters" ? batterPlayers(rows) : Stats.aggregatePitchers(rows);
     if (state.dk.length) DK.matchSalaries(s.players, state.dk);
     Vegas.attach(s.players, state.vegas, kind);
     Stats.computeRatings(s.players, weights[kind]);
@@ -240,11 +282,17 @@
     var kind = state.tab;
     renderStatusBar();
     var isVegas = kind === "vegas";
-    document.getElementById("main-data").style.display = isVegas ? "none" : "";
+    var isLookup = kind === "lookup";
+    document.getElementById("main-data").style.display = isVegas || isLookup ? "none" : "";
     document.getElementById("vegas-panel").style.display = isVegas ? "" : "none";
-    document.querySelector(".controls").style.display = isVegas ? "none" : "";
+    document.getElementById("lookup-panel").style.display = isLookup ? "" : "none";
+    document.querySelector(".controls").style.display = isVegas || isLookup ? "none" : "";
     if (isVegas) {
       renderVegas();
+      return;
+    }
+    if (isLookup) {
+      renderLookup();
       return;
     }
     renderWeights(kind);
@@ -261,7 +309,7 @@
       p ? p.toLocaleString() + " pitcher events · " + state.pitchers.players.length + " players" : "no data";
     var dkStatus = "no salaries";
     if (d) {
-      var tabKind = state.tab === "vegas" ? "batters" : state.tab;
+      var tabKind = state.tab === "pitchers" ? "pitchers" : "batters";
       var matched = 0;
       state[tabKind].players.forEach(function (pl) { if (pl.onSlate) matched++; });
       dkStatus = d + " DK players · " + matched + " matched";
@@ -362,7 +410,9 @@
     });
     html += "</tbody>";
     if (!players.length) {
-      html += '<tbody><tr><td colspan="' + showCols.length + '" class="empty">No data — upload a Savant CSV above.</td></tr></tbody>';
+      html += '<tbody><tr><td colspan="' + showCols.length + '" class="empty">' +
+        (s.rows.length ? "No players match the current filters." : "No data yet — pull from Savant or upload a Savant CSV above.") +
+        "</td></tr></tbody>";
     }
 
     var table = document.getElementById("data-table");
@@ -388,10 +438,9 @@
   /* Event history shown under an expanded player row, sorted by date. */
   function historyHTML(kind, p) {
     var evts = p.events.slice();
-    if (kind === "pitchers") {
-      var paOnly = evts.filter(function (r) { return r.events; });
-      if (paOnly.length) evts = paOnly;
-    }
+    /* Pitch-level data: list plate-appearance results, not every pitch. */
+    var paOnly = evts.filter(function (r) { return r.events; });
+    if (paOnly.length) evts = paOnly;
     evts.sort(function (a, b) {
       return (b.game_date || "").localeCompare(a.game_date || "");
     });
@@ -503,6 +552,307 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Local stats server (pybaseball): Savant pulls + player lookup        */
+  /* ------------------------------------------------------------------ */
+
+  function api(path) {
+    return fetch("api/" + path, { cache: "no-store" }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        if (!r.ok) throw new Error(body.error || "The stats server returned an error (" + r.status + ").");
+        return body;
+      });
+    }, function () {
+      throw new Error("Can't reach the local stats server. Is it still running?");
+    });
+  }
+
+  function rowsFromPayload(payload) {
+    var cols = payload.columns;
+    return payload.rows.map(function (arr) {
+      var o = {};
+      for (var i = 0; i < cols.length; i++) o[cols[i]] = arr[i] == null ? "" : String(arr[i]);
+      return o;
+    });
+  }
+
+  function isoDate(d) {
+    var m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+  }
+
+  function daysAgo(n) {
+    var d = new Date();
+    d.setDate(d.getDate() - n);
+    return isoDate(d);
+  }
+
+  function shortDate(iso) {
+    var p = (iso || "").split("-");
+    if (p.length !== 3) return iso || "";
+    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+p[1] - 1] +
+      " " + (+p[2]) + ", " + p[0];
+  }
+
+  function setStatus(el, text, tone) {
+    el.textContent = text;
+    el.className = "sv-status" + (tone ? " " + tone : "");
+  }
+
+  /* Run a server request while showing the server's day-by-day progress. */
+  function withProgress(el, label, promise) {
+    var t0 = Date.now();
+    setStatus(el, label + "…", "busy");
+    var timer = setInterval(function () {
+      api("progress").then(function (pr) {
+        var secs = Math.round((Date.now() - t0) / 1000);
+        var detail = pr.active && pr.total > 1 ? " — day " + Math.min(pr.done + 1, pr.total) + " of " + pr.total : "";
+        setStatus(el, label + detail + " · " + secs + "s", "busy");
+      }).catch(function () { /* keep the last message */ });
+    }, 800);
+    return promise.then(function (v) { clearInterval(timer); return v; },
+      function (e) { clearInterval(timer); throw e; });
+  }
+
+  function initSavantPanel() {
+    var batStart = document.getElementById("sv-bat-start");
+    var batEnd = document.getElementById("sv-bat-end");
+    var pitStart = document.getElementById("sv-pit-start");
+    var pitEnd = document.getElementById("sv-pit-end");
+    var post = document.getElementById("sv-post");
+    var today = isoDate(new Date());
+    batStart.value = loadPref("svBatStart", daysAgo(8));
+    pitStart.value = loadPref("svPitStart", daysAgo(30));
+    batEnd.value = today;
+    pitEnd.value = today;
+    post.checked = loadPref("svPost", true);
+    [batStart, batEnd, pitStart, pitEnd].forEach(function (i) { i.max = today; });
+
+    document.getElementById("sv-pull").addEventListener("click", function () {
+      var btn = this;
+      var status = document.getElementById("sv-status");
+      if (!batStart.value || !pitStart.value) {
+        setStatus(status, "Pick a start date for batters and pitchers.", "error");
+        return;
+      }
+      savePref("svBatStart", batStart.value);
+      savePref("svPitStart", pitStart.value);
+      savePref("svPost", post.checked);
+      var ps = post.checked ? 1 : 0;
+      var summary = [];
+      btn.disabled = true;
+
+      function pull(role, start, end) {
+        var kind = role === "batter" ? "batters" : "pitchers";
+        var q = "league?role=" + role + "&start=" + start + "&end=" + (end || today) + "&postseason=" + ps;
+        return withProgress(status, "Pulling " + kind + " from Baseball Savant", api(q)).then(function (payload) {
+          var rows = rowsFromPayload(payload);
+          state[kind].rows = rows;
+          state[kind].expanded = {};
+          persistData(kind, rows);
+          rebuild(kind);
+          var names = {};
+          rows.forEach(function (r) { names[r.player_name] = 1; });
+          summary.push(rows.length.toLocaleString() + " pitches for " + Object.keys(names).length + " " + kind +
+            " (" + shortDate(payload.start) + " – " + shortDate(payload.end) + ")");
+        });
+      }
+
+      pull("batter", batStart.value, batEnd.value)
+        .then(function () { return pull("pitcher", pitStart.value, pitEnd.value); })
+        .then(function () { setStatus(status, "Loaded " + summary.join(" and ") + ".", "ok"); },
+          function (e) {
+            setStatus(status, (summary.length ? "Loaded " + summary[0] + ", but pitchers failed: " : "") + e.message, "error");
+          })
+        .then(function () { btn.disabled = false; });
+    });
+  }
+
+  /* ---- Player Lookup tab ---- */
+
+  function lookupColumns(role) {
+    var cols = role === "batter" ? BATTER_COLUMNS : PITCHER_COLUMNS;
+    var stats = cols.filter(function (c) {
+      return !c.dk && !c.vegas && c.key !== "rating" && c.key !== "name";
+    });
+    return [{ key: "name", label: "Player", type: "text" }, { key: "range", label: "Dates", type: "text" }].concat(stats);
+  }
+
+  function lookupPlayerRow(entry) {
+    var players;
+    if (entry.role === "batter") {
+      players = batterPlayers(entry.rows);
+      if (!players.length) players = Stats.aggregateBatters(entry.rows);
+    } else {
+      players = Stats.aggregatePitchers(entry.rows);
+    }
+    var p = players[0];
+    if (!p) return null;
+    p.name = entry.name;
+    p.range = shortDate(entry.start) + " – " + shortDate(entry.end);
+    p.entryKey = entry.key;
+    return p;
+  }
+
+  function renderLookup() {
+    document.getElementById("lookup-offline").hidden = state.api;
+    document.getElementById("lookup-form").hidden = !state.api;
+    var out = document.getElementById("lookup-results");
+    var html = "";
+    ["batter", "pitcher"].forEach(function (role) {
+      var entries = state.lookup.entries.filter(function (e) { return e.role === role; });
+      if (!entries.length) return;
+      var cols = lookupColumns(role);
+      var kind = role === "batter" ? "batters" : "pitchers";
+      html += '<h2 class="lookup-head">' + (role === "batter" ? "Batters" : "Pitchers") + "</h2>";
+      if (role === "batter" && state.evFloor) {
+        html += '<p class="hint">Batted-ball stats use ' + state.evFloor +
+          "+ mph balls in play, as set on the Batters tab. Pitches and K count every pitch.</p>";
+      }
+      html += '<div class="table-wrap"><table class="data-grid"><thead><tr>';
+      cols.forEach(function (c) { html += "<th>" + esc(c.label) + "</th>"; });
+      html += "<th></th></tr></thead><tbody>";
+      entries.forEach(function (entry) {
+        var p = lookupPlayerRow(entry);
+        if (!p) return;
+        var open = state.lookup.expanded[entry.key];
+        html += '<tr class="player-row' + (open ? " open" : "") + '" data-key="' + esc(entry.key) + '">';
+        cols.forEach(function (c) {
+          if (c.key === "name") {
+            html += '<td class="t name-cell"><span class="caret">' + (open ? "▾" : "▸") + "</span>" + esc(p.name) + "</td>";
+          } else {
+            html += '<td class="' + (c.type === "text" ? "t" : "n") + '">' + esc(fmt(p[c.key], c.type)) + "</td>";
+          }
+        });
+        html += '<td><button class="ghost-btn del-row" data-remove="' + esc(entry.key) +
+          '" title="Remove from lookup">✕</button></td></tr>';
+        if (open) {
+          html += '<tr class="history-row"><td colspan="' + (cols.length + 1) + '">' + historyHTML(kind, p) + "</td></tr>";
+        }
+      });
+      html += "</tbody></table></div>";
+    });
+    if (!html && state.api) {
+      html = '<p class="empty-note">Search any player and date range — this season, last season, or a single ' +
+        "week — to see their Statcast numbers and every plate appearance.</p>";
+    }
+    out.innerHTML = html;
+
+    out.querySelectorAll("tr.player-row").forEach(function (tr) {
+      tr.addEventListener("click", function () {
+        var key = tr.getAttribute("data-key");
+        state.lookup.expanded[key] = !state.lookup.expanded[key];
+        renderLookup();
+      });
+    });
+    out.querySelectorAll("button[data-remove]").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var key = btn.getAttribute("data-remove");
+        state.lookup.entries = state.lookup.entries.filter(function (e) { return e.key !== key; });
+        persistData("lookup", state.lookup.entries);
+        renderLookup();
+      });
+    });
+  }
+
+  function initLookup() {
+    var form = document.getElementById("lookup-form");
+    var nameInput = document.getElementById("lk-name");
+    var role = document.getElementById("lk-role");
+    var start = document.getElementById("lk-start");
+    var end = document.getElementById("lk-end");
+    var status = document.getElementById("lk-status");
+    var cands = document.getElementById("lk-candidates");
+    var today = new Date();
+    start.value = daysAgo(14);
+    end.value = isoDate(today);
+    start.max = end.max = isoDate(today);
+
+    form.querySelectorAll("[data-preset]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var y = today.getFullYear();
+        var preset = btn.getAttribute("data-preset");
+        if (preset === "15") { start.value = daysAgo(14); end.value = isoDate(today); }
+        if (preset === "season") { start.value = y + "-03-01"; end.value = isoDate(today); }
+        if (preset === "last") { start.value = (y - 1) + "-03-01"; end.value = (y - 1) + "-11-30"; }
+      });
+    });
+
+    function fetchPlayer(c) {
+      cands.innerHTML = "";
+      var r = role.value;
+      var q = "player?id=" + c.id + "&role=" + r + "&start=" + start.value + "&end=" + end.value +
+        "&postseason=" + (loadPref("svPost", true) ? 1 : 0);
+      withProgress(status, "Pulling " + c.name + " from Baseball Savant", api(q)).then(function (payload) {
+        var rows = rowsFromPayload(payload);
+        var range = shortDate(payload.start) + " – " + shortDate(payload.end);
+        if (!rows.length) {
+          setStatus(status, "No Statcast pitches for " + c.name + " as a " + r + " from " + range + ".", "error");
+          return;
+        }
+        var key = r + ":" + c.id;
+        state.lookup.entries = state.lookup.entries.filter(function (e) { return e.key !== key; });
+        state.lookup.entries.unshift({
+          key: key, id: c.id, role: r, name: rows[0].player_name || c.name,
+          start: payload.start, end: payload.end, rows: rows
+        });
+        state.lookup.expanded[key] = true;
+        persistData("lookup", state.lookup.entries);
+        setStatus(status, "Loaded " + rows.length.toLocaleString() + " pitches for " + (rows[0].player_name || c.name) +
+          " (" + range + ").", "ok");
+        renderLookup();
+      }).catch(function (e) { setStatus(status, e.message, "error"); });
+    }
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      cands.innerHTML = "";
+      var name = nameInput.value.trim();
+      if (start.value > end.value) {
+        setStatus(status, "The start date is after the end date.", "error");
+        return;
+      }
+      setStatus(status, "Searching for " + name + "…", "busy");
+      api("players?name=" + encodeURIComponent(name)).then(function (res) {
+        var results = res.results || [];
+        if (!results.length) {
+          setStatus(status, "No MLB player found matching “" + name + "”. Check the spelling, or try the last name only.", "error");
+          return;
+        }
+        if (results.length === 1) {
+          fetchPlayer(results[0]);
+          return;
+        }
+        setStatus(status, results.length + " players match “" + name + "”. Pick one:", "");
+        cands.innerHTML = results.map(function (c, i) {
+          return '<button type="button" class="ghost-btn" data-i="' + i + '">' + esc(c.name) +
+            (c.years ? ' <span class="muted">' + esc(c.years) + "</span>" : "") + "</button>";
+        }).join("");
+        cands.querySelectorAll("button").forEach(function (b) {
+          b.addEventListener("click", function () { fetchPlayer(results[+b.getAttribute("data-i")]); });
+        });
+      }).catch(function (e) { setStatus(status, e.message, "error"); });
+    });
+  }
+
+  function detectServer() {
+    /* The local server only ever serves plain http; skip the probe on
+       file:// and https hosts (GitHub Pages, the artifact link). */
+    if (location.protocol !== "http:") {
+      document.getElementById("savant-offline").hidden = false;
+      return;
+    }
+    api("health").then(function () {
+      state.api = true;
+      document.getElementById("savant-panel").hidden = false;
+      if (state.tab === "lookup") renderLookup();
+    }, function () {
+      document.getElementById("savant-offline").hidden = false;
+      if (state.tab === "lookup") renderLookup();
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Uploads + controls                                                  */
   /* ------------------------------------------------------------------ */
 
@@ -605,7 +955,18 @@
       state.pitchers.rows = [];
       state.dk = [];
       state.vegas = [];
+      state.lookup.entries = [];
       rebuildAll();
+    });
+
+    document.querySelectorAll(".ev-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.evFloor = parseInt(btn.getAttribute("data-floor"), 10) || 0;
+        savePref("evFloor", state.evFloor);
+        state.batters.expanded = {};
+        updateSplitButtons();
+        rebuild("batters");
+      });
     });
 
     document.getElementById("vegas-from-dk").addEventListener("click", function () {
@@ -633,6 +994,9 @@
     });
 
     document.getElementById("storage-backend").textContent = Store.backend;
+    initSavantPanel();
+    initLookup();
+    detectServer();
     updateSplitButtons();
     rebuildAll();
     restoreData().then(rebuildAll);
@@ -640,7 +1004,11 @@
 
   function updateSplitButtons() {
     var kind = state.tab;
-    if (kind === "vegas") return;
+    if (kind === "vegas" || kind === "lookup") return;
+    document.getElementById("ev-floor").style.display = kind === "batters" ? "" : "none";
+    document.querySelectorAll(".ev-btn").forEach(function (btn) {
+      btn.classList.toggle("active", (parseInt(btn.getAttribute("data-floor"), 10) || 0) === state.evFloor);
+    });
     var labels = kind === "batters"
       ? { all: "All", vsL: "vs LHP", vsR: "vs RHP" }
       : { all: "All", vsL: "vs LHB", vsR: "vs RHB" };

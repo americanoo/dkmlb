@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DK MLB DFS Research</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -24,6 +25,28 @@
       </label>
       <button id="clear-data" class="ghost-btn" title="Remove uploaded data stored in this browser">Clear data</button>
     </div>
+    <section id="savant-panel" class="savant" hidden>
+      <div class="savant-row">
+        <span class="savant-title">Pull from Baseball Savant</span>
+        <fieldset class="range">
+          <legend>Batters</legend>
+          <input type="date" id="sv-bat-start" aria-label="Batters from">
+          <span>to</span>
+          <input type="date" id="sv-bat-end" aria-label="Batters to">
+        </fieldset>
+        <fieldset class="range">
+          <legend>Pitchers</legend>
+          <input type="date" id="sv-pit-start" aria-label="Pitchers from">
+          <span>to</span>
+          <input type="date" id="sv-pit-end" aria-label="Pitchers to">
+        </fieldset>
+        <label class="check"><input type="checkbox" id="sv-post" checked> Include postseason</label>
+        <button id="sv-pull" class="upload-btn as-button">Pull data</button>
+      </div>
+      <p id="sv-status" class="sv-status" role="status"></p>
+    </section>
+    <p id="savant-offline" class="hint" hidden>To pull stats straight from Baseball Savant, start the local
+      stats server (double-click <code>start-server.command</code>) and open http://localhost:8000.</p>
     <div class="statusbar">
       <span id="status-batters">no data</span>
       <span id="status-pitchers">no data</span>
@@ -36,6 +59,7 @@
     <button class="tab active" data-tab="batters">Batters</button>
     <button class="tab" data-tab="pitchers">Pitchers</button>
     <button class="tab" data-tab="vegas">Vegas</button>
+    <button class="tab" data-tab="lookup">Player Lookup</button>
   </nav>
 
   <section class="controls">
@@ -44,6 +68,10 @@
       <button class="split-btn active" data-split="all">All</button>
       <button class="split-btn" data-split="vsL">vs LHP</button>
       <button class="split-btn" data-split="vsR">vs RHP</button>
+    </div>
+    <div class="splits" id="ev-floor" title="95+ mph: batted-ball stats use hard-hit balls only, like your Savant search. Pitches and K still count every pitch.">
+      <button class="ev-btn" data-floor="0">All batted balls</button>
+      <button class="ev-btn" data-floor="95">95+ mph</button>
     </div>
     <label class="check"><input type="checkbox" id="slate-only"> DK slate only</label>
     <label class="minsample"><span id="min-sample-label">Min BBE</span>
@@ -65,9 +93,34 @@
     </div>
   </section>
 
+  <section id="lookup-panel" style="display:none">
+    <p id="lookup-offline" class="hint" hidden>Player lookup pulls any player's history from Baseball Savant,
+      so it needs the local stats server running. Double-click <code>start-server.command</code>, then open
+      http://localhost:8000.</p>
+    <form id="lookup-form" class="lookup-form">
+      <input type="search" id="lk-name" placeholder="Player name, e.g. Aaron Judge" aria-label="Player name" required>
+      <select id="lk-role" aria-label="Look up as">
+        <option value="batter">as batter</option>
+        <option value="pitcher">as pitcher</option>
+      </select>
+      <input type="date" id="lk-start" aria-label="From" required>
+      <span class="muted">to</span>
+      <input type="date" id="lk-end" aria-label="To" required>
+      <button type="submit" class="upload-btn as-button">Search</button>
+      <span class="presets">
+        <button type="button" class="ghost-btn" data-preset="15">Last 15 days</button>
+        <button type="button" class="ghost-btn" data-preset="season">This season</button>
+        <button type="button" class="ghost-btn" data-preset="last">Last season</button>
+      </span>
+    </form>
+    <div id="lk-candidates" class="candidates"></div>
+    <p id="lk-status" class="sv-status" role="status"></p>
+    <div id="lookup-results"></div>
+  </section>
+
   <main id="main-data">
     <div class="table-wrap">
-      <table id="data-table"></table>
+      <table id="data-table" class="data-grid"></table>
     </div>
     <aside class="weights">
       <div class="weights-head">
@@ -82,7 +135,7 @@
   </main>
 
   <footer>
-    <p>Data: Baseball Savant statcast search exports · DraftKings lineup-builder salary CSV. Click a player row to expand their event history.
+    <p>Data: Baseball Savant statcast (CSV exports or the local pybaseball server) · DraftKings lineup-builder salary CSV. Click a player row to expand their event history.
       Uploads, Vegas entries, and weights auto-save in this browser (<span id="storage-backend">IndexedDB</span>) and reload on your next visit.</p>
   </footer>
 

@@ -40,6 +40,15 @@
   var WHIFF_DESCRIPTIONS = { swinging_strike: 1, swinging_strike_blocked: 1, missed_bunt: 1 };
   var CSW_DESCRIPTIONS = { called_strike: 1, swinging_strike: 1, swinging_strike_blocked: 1 };
 
+  /* A ball put in play. Statcast also records exit velo on many fouls, so
+     pitch-level data must not count those as batted balls. Older Savant
+     data used hit_into_play_score / hit_into_play_no_out. */
+  function isBattedBall(r) {
+    var d = r.description;
+    if (d === undefined || d === "") return num(r.launch_speed) !== null;
+    return d.indexOf("hit_into_play") === 0;
+  }
+
   /* ---- Batters: rows are batted-ball events, or complete pitch-level /
      at-bat data (strikeouts/walks carry no launch data and don't dilute
      the averages). Counts cover the full timeframe of the upload. ---- */
@@ -59,19 +68,21 @@
       var fieldOuts = 0, ks = 0, pa = 0;
 
       evts.forEach(function (r) {
-        var ev = num(r.launch_speed);
-        var la = num(r.launch_angle);
-        var d = num(r.hit_distance_sc);
-        if (ev !== null) {
-          evs.push(ev);
-          if (ev >= 95) hardHits++;
+        if (isBattedBall(r)) {
+          var ev = num(r.launch_speed);
+          var la = num(r.launch_angle);
+          var d = num(r.hit_distance_sc);
+          if (ev !== null) {
+            evs.push(ev);
+            if (ev >= 95) hardHits++;
+          }
+          if (la !== null) {
+            las.push(la);
+            if (la >= 8 && la <= 32) sweetSpots++;
+          }
+          if (d !== null) dists.push(d);
+          if (isBarrel(ev, la)) barrels++;
         }
-        if (la !== null) {
-          las.push(la);
-          if (la >= 8 && la <= 32) sweetSpots++;
-        }
-        if (d !== null) dists.push(d);
-        if (isBarrel(ev, la)) barrels++;
         var e = r.events;
         if (e) pa++;
         if (HIT_EVENTS[e]) hits++;
@@ -136,7 +147,7 @@
         if (CSW_DESCRIPTIONS[d]) csw++;
         var velo = num(r.effective_speed) !== null ? num(r.effective_speed) : num(r.release_speed);
         if (velo !== null) velos.push(velo);
-        if (d === "hit_into_play") {
+        if (isBattedBall(r)) {
           var ev = num(r.launch_speed);
           if (ev !== null) {
             evAgainst.push(ev);
@@ -201,6 +212,7 @@
   global.Stats = {
     num: num,
     isBarrel: isBarrel,
+    isBattedBall: isBattedBall,
     aggregateBatters: aggregateBatters,
     aggregatePitchers: aggregatePitchers,
     computeRatings: computeRatings
