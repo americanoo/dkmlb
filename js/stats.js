@@ -174,6 +174,103 @@
     });
   }
 
+  var NON_AB_EVENTS = {
+    walk: 1, intent_walk: 1, hit_by_pitch: 1, sac_fly: 1, sac_bunt: 1,
+    sac_fly_double_play: 1, sac_bunt_double_play: 1, catcher_interf: 1, truncated_pa: 1
+  };
+  var TOTAL_BASES = { single: 1, double: 2, triple: 3, home_run: 4 };
+
+  /* ---- Full stat line for one group of pitches (a player or a team),
+     used by the Lookup tab. Rate stats use every pitch / PA in rows; the
+     contact block uses balls in play passing opts.contact (e.g. a minimum
+     exit velo or batted-ball type). Zones 11-14 are outside the strike zone.
+     xwOBA uses Savant's per-ball estimate on balls in play and the actual
+     wOBA value for walks, strikeouts and HBP. ---- */
+  function statLine(rows, opts) {
+    var contactOk = (opts && opts.contact) || function () { return true; };
+    var pa = 0, ab = 0, hitsAll = 0, tb = 0, k = 0, bb = 0;
+    var wobaNum = 0, xwobaNum = 0, denom = 0;
+    var swings = 0, whiffs = 0, csw = 0, outZone = 0, chases = 0;
+    var velos = [], evs = [], las = [], dists = [];
+    var bbe = 0, hh = 0, barrels = 0, sweet = 0, hr = 0, xbh = 0, hits = 0;
+
+    rows.forEach(function (r) {
+      var e = r.events, d = r.description || "";
+      var inPlay = isBattedBall(r);
+      if (e) {
+        pa++;
+        if (!NON_AB_EVENTS[e]) ab++;
+        if (HIT_EVENTS[e]) { hitsAll++; tb += TOTAL_BASES[e]; }
+        if (e === "strikeout" || e === "strikeout_double_play") k++;
+        if (e === "walk" || e === "intent_walk") bb++;
+      }
+      var den = num(r.woba_denom);
+      if (den) {
+        var wv = num(r.woba_value) || 0;
+        var xw = num(r.estimated_woba_using_speedangle);
+        denom += den;
+        wobaNum += wv;
+        xwobaNum += inPlay && xw !== null ? xw : wv;
+      }
+      var swing = SWING_DESCRIPTIONS[d] || d.indexOf("hit_into_play") === 0;
+      if (swing) swings++;
+      if (WHIFF_DESCRIPTIONS[d]) whiffs++;
+      if (CSW_DESCRIPTIONS[d]) csw++;
+      var z = num(r.zone);
+      if (z !== null && z >= 11) {
+        outZone++;
+        if (swing) chases++;
+      }
+      var velo = num(r.release_speed) !== null ? num(r.release_speed) : num(r.effective_speed);
+      if (velo !== null) velos.push(velo);
+
+      if (inPlay && contactOk(r)) {
+        bbe++;
+        var ev = num(r.launch_speed), la = num(r.launch_angle), dist = num(r.hit_distance_sc);
+        if (ev !== null) {
+          evs.push(ev);
+          if (ev >= 95) hh++;
+        }
+        if (la !== null) {
+          las.push(la);
+          if (la >= 8 && la <= 32) sweet++;
+        }
+        if (dist !== null) dists.push(dist);
+        if (isBarrel(ev, la)) barrels++;
+        if (HIT_EVENTS[e]) hits++;
+        if (XBH_EVENTS[e]) xbh++;
+        if (e === "home_run") hr++;
+      }
+    });
+
+    return {
+      pitches: rows.length,
+      pa: pa,
+      avg: ab ? hitsAll / ab : null,
+      slg: ab ? tb / ab : null,
+      woba: denom ? wobaNum / denom : null,
+      xwoba: denom ? xwobaNum / denom : null,
+      k_pct: pa ? (k / pa) * 100 : null,
+      bb_pct: pa ? (bb / pa) * 100 : null,
+      whiff_pct: swings ? (whiffs / swings) * 100 : null,
+      chase_pct: outZone ? (chases / outZone) * 100 : null,
+      csw_pct: rows.length ? (csw / rows.length) * 100 : null,
+      avg_velo: avg(velos),
+      bbe: bbe,
+      hh: hh,
+      hardhit_pct: evs.length ? (hh / evs.length) * 100 : null,
+      barrel_pct: evs.length ? (barrels / evs.length) * 100 : null,
+      avg_ev: avg(evs),
+      max_ev: max(evs),
+      avg_la: avg(las),
+      sweetspot_pct: las.length ? (sweet / las.length) * 100 : null,
+      avg_dist: avg(dists),
+      hr: hr,
+      xbh: xbh,
+      hits: hits
+    };
+  }
+
   /* ---- Rating: the weights are a 10-point budget. Each stat is min-max
      scaled 0-1 across the supplied player pool, and every weight point
      buys up to one rating point, so a fully allocated budget yields a
@@ -213,6 +310,7 @@
     num: num,
     isBarrel: isBarrel,
     isBattedBall: isBattedBall,
+    statLine: statLine,
     aggregateBatters: aggregateBatters,
     aggregatePitchers: aggregatePitchers,
     computeRatings: computeRatings

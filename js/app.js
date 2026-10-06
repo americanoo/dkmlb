@@ -103,7 +103,7 @@
     pitchers: { rows: [], players: [], sortKey: "rating", sortDir: -1, split: "all", expanded: {} },
     dk: [],
     vegas: [],
-    lookup: { entries: [], expanded: {} },
+    lookup: { entries: [], expanded: {}, filters: loadPref("lkFilters", {}), sort: { key: "pa", dir: -1 } },
     search: "",
     slateOnly: false,
     minSample: { batters: 1, pitchers: 1 },
@@ -192,7 +192,7 @@
         if (rows === undefined) return;
         if (key === "dk") state.dk = rows;
         else if (key === "vegas") state.vegas = rows;
-        else if (key === "lookup") state.lookup.entries = rows;
+        else if (key === "lookup") state.lookup.entries = rows.filter(function (e) { return e && e.kind; });
         else state[key].rows = rows;
       }).catch(function () { /* unreadable entry - start empty */ });
     }));
@@ -263,6 +263,7 @@
       case "num1": return Number(v).toFixed(1);
       case "num2": return Number(v).toFixed(2);
       case "ml": return Number(v) > 0 ? "+" + Number(v) : String(Number(v));
+      case "avg3": return Number(v) >= 1 ? Number(v).toFixed(3) : Number(v).toFixed(3).replace(/^0/, "");
       case "int": return String(v);
       default: return String(v);
     }
@@ -667,81 +668,350 @@
     });
   }
 
-  /* ---- Player Lookup tab ---- */
+  /* ---- Lookup tab: player or team, any date range, instant filters ---- */
 
-  function lookupColumns(role) {
-    var cols = role === "batter" ? BATTER_COLUMNS : PITCHER_COLUMNS;
-    var stats = cols.filter(function (c) {
-      return !c.dk && !c.vegas && c.key !== "rating" && c.key !== "name";
-    });
-    return [{ key: "name", label: "Player", type: "text" }, { key: "range", label: "Dates", type: "text" }].concat(stats);
+  var TEAM_NAMES = {
+    ATH: "Athletics", ATL: "Atlanta Braves", AZ: "Arizona Diamondbacks", BAL: "Baltimore Orioles",
+    BOS: "Boston Red Sox", CHC: "Chicago Cubs", CIN: "Cincinnati Reds", CLE: "Cleveland Guardians",
+    COL: "Colorado Rockies", CWS: "Chicago White Sox", DET: "Detroit Tigers", HOU: "Houston Astros",
+    KC: "Kansas City Royals", LAA: "Los Angeles Angels", LAD: "Los Angeles Dodgers", MIA: "Miami Marlins",
+    MIL: "Milwaukee Brewers", MIN: "Minnesota Twins", NYM: "New York Mets", NYY: "New York Yankees",
+    PHI: "Philadelphia Phillies", PIT: "Pittsburgh Pirates", SD: "San Diego Padres", SEA: "Seattle Mariners",
+    SF: "San Francisco Giants", STL: "St. Louis Cardinals", TB: "Tampa Bay Rays", TEX: "Texas Rangers",
+    TOR: "Toronto Blue Jays", WSH: "Washington Nationals"
+  };
+  var TEAM_CODES = Object.keys(TEAM_NAMES).sort(function (a, b) {
+    return TEAM_NAMES[a].localeCompare(TEAM_NAMES[b]);
+  });
+
+  var PITCH_GROUPS = {
+    fastball: ["FF", "SI", "FC", "FA"],
+    breaking: ["SL", "ST", "SV", "CU", "KC", "CS"],
+    offspeed: ["CH", "FS", "FO", "SC", "KN", "EP"]
+  };
+
+  /* Each filter: options as [value, label]; "" means no filter. contact
+     filters narrow only the contact block (balls in play). */
+  var LOOKUP_FILTERS = [
+    { key: "pthrows", label: "Pitcher throws", options: [["", "Either"], ["L", "Left (LHP)"], ["R", "Right (RHP)"]] },
+    { key: "stand", label: "Batter stands", options: [["", "Either"], ["L", "Left (LHB)"], ["R", "Right (RHB)"]] },
+    { key: "pitch", label: "Pitch type", options: [["", "All pitches"], ["g:fastball", "Fastballs (4-seam, sinker, cutter)"],
+      ["g:breaking", "Breaking (slider, sweeper, curve)"], ["g:offspeed", "Offspeed (changeup, splitter)"],
+      ["FF", "4-Seam"], ["SI", "Sinker"], ["FC", "Cutter"], ["SL", "Slider"], ["ST", "Sweeper"],
+      ["CU", "Curveball"], ["KC", "Knuckle curve"], ["CH", "Changeup"], ["FS", "Splitter"]] },
+    { key: "count", label: "Count", options: [["", "Any count"], ["first", "First pitch (0-0)"],
+      ["ahead", "Hitter ahead"], ["behind", "Pitcher ahead"], ["even", "Even"], ["two", "Two strikes"], ["full", "Full (3-2)"]] },
+    { key: "venue", label: "Home / away", options: [["", "Both"], ["home", "Home"], ["away", "Away"]] },
+    { key: "opp", label: "Opponent", options: [["", "Any team"]] },
+    { key: "inning", label: "Innings", options: [["", "All innings"], ["1-3", "1st–3rd"], ["4-6", "4th–6th"], ["7+", "7th +"]] },
+    { key: "tto", label: "Times through order", options: [["", "Any"], ["1", "1st time"], ["2", "2nd time"], ["3", "3rd+ time"]] },
+    { key: "bb", label: "Batted ball", contact: true, options: [["", "All"], ["ground_ball", "Ground balls"],
+      ["line_drive", "Line drives"], ["fly_ball", "Fly balls"], ["popup", "Pop-ups"]] },
+    { key: "minev", label: "Min exit velo", contact: true, number: true }
+  ];
+  TEAM_CODES.forEach(function (c) { LOOKUP_FILTERS[5].options.push([c, TEAM_NAMES[c]]); });
+
+  var LK_RESULTS_BAT = [
+    { key: "pitches", label: "Pitches", type: "int" }, { key: "pa", label: "PA", type: "int" },
+    { key: "avg", label: "AVG", type: "avg3" }, { key: "slg", label: "SLG", type: "avg3" },
+    { key: "woba", label: "wOBA", type: "avg3" }, { key: "xwoba", label: "xwOBA", type: "avg3" },
+    { key: "k_pct", label: "K%", type: "pct" }, { key: "bb_pct", label: "BB%", type: "pct" },
+    { key: "whiff_pct", label: "Whiff%", type: "pct" }, { key: "chase_pct", label: "Chase%", type: "pct" }
+  ];
+  var LK_RESULTS_PIT = [
+    { key: "pitches", label: "Pitches", type: "int" }, { key: "pa", label: "BF", type: "int" },
+    { key: "k_pct", label: "K%", type: "pct" }, { key: "bb_pct", label: "BB%", type: "pct" },
+    { key: "whiff_pct", label: "Whiff%", type: "pct" }, { key: "csw_pct", label: "CSW%", type: "pct" },
+    { key: "chase_pct", label: "Chase%", type: "pct" }, { key: "avg", label: "AVG", type: "avg3" },
+    { key: "woba", label: "wOBA", type: "avg3" }, { key: "xwoba", label: "xwOBA", type: "avg3" },
+    { key: "avg_velo", label: "Velo", type: "num1" }
+  ];
+  var LK_CONTACT_BAT = [
+    { key: "bbe", label: "BBE", type: "int" }, { key: "hh", label: "HH", type: "int" },
+    { key: "hardhit_pct", label: "HardHit%", type: "pct" }, { key: "barrel_pct", label: "Barrel%", type: "pct" },
+    { key: "avg_ev", label: "Avg EV", type: "num1" }, { key: "max_ev", label: "Max EV", type: "num1" },
+    { key: "avg_la", label: "Avg LA", type: "num1" }, { key: "sweetspot_pct", label: "SweetSpot%", type: "pct" },
+    { key: "avg_dist", label: "Avg Dist", type: "num0" }, { key: "hr", label: "HR", type: "int" },
+    { key: "xbh", label: "XBH", type: "int" }, { key: "hits", label: "Hits", type: "int" }
+  ];
+  var LK_CONTACT_PIT = [
+    { key: "bbe", label: "BBE", type: "int" }, { key: "hh", label: "HH", type: "int" },
+    { key: "hardhit_pct", label: "HardHit%", type: "pct" }, { key: "barrel_pct", label: "Barrel%", type: "pct" },
+    { key: "avg_ev", label: "Avg EV", type: "num1" }, { key: "hr", label: "HR", type: "int" },
+    { key: "hits", label: "Hits", type: "int" }
+  ];
+  var HISTORY_LIMIT = 400;
+
+  function lkFilters() {
+    return state.lookup.filters;
   }
 
-  function lookupPlayerRow(entry) {
-    var players;
-    if (entry.role === "batter") {
-      players = batterPlayers(entry.rows);
-      if (!players.length) players = Stats.aggregateBatters(entry.rows);
-    } else {
-      players = Stats.aggregatePitchers(entry.rows);
+  function battingTeam(r) {
+    return r.inning_topbot === "Top" ? r.away_team : r.home_team;
+  }
+
+  function pitchingTeam(r) {
+    return r.inning_topbot === "Top" ? r.home_team : r.away_team;
+  }
+
+  /* Situation filters: narrow every stat. side decides what home/away and
+     opponent mean (the batting team's view or the pitching team's view). */
+  function situationFilter(side) {
+    var f = lkFilters();
+    var pitchSet = null;
+    if (f.pitch) {
+      pitchSet = {};
+      (f.pitch.indexOf("g:") === 0 ? PITCH_GROUPS[f.pitch.slice(2)] : [f.pitch])
+        .forEach(function (t) { pitchSet[t] = 1; });
     }
-    var p = players[0];
-    if (!p) return null;
-    p.name = entry.name;
-    p.range = shortDate(entry.start) + " – " + shortDate(entry.end);
-    p.entryKey = entry.key;
-    return p;
+    return function (r) {
+      if (f.pthrows && r.p_throws !== f.pthrows) return false;
+      if (f.stand && r.stand !== f.stand) return false;
+      if (pitchSet && !pitchSet[r.pitch_type]) return false;
+      if (f.count) {
+        var b = +r.balls, s = +r.strikes;
+        if (f.count === "first" && !(b === 0 && s === 0)) return false;
+        if (f.count === "ahead" && !(b > s)) return false;
+        if (f.count === "behind" && !(s > b)) return false;
+        if (f.count === "even" && b !== s) return false;
+        if (f.count === "two" && s !== 2) return false;
+        if (f.count === "full" && !(b === 3 && s === 2)) return false;
+      }
+      if (f.venue || f.opp) {
+        var battingHome = r.inning_topbot === "Bot";
+        var isHome = side === "batting" ? battingHome : !battingHome;
+        if (f.venue === "home" && !isHome) return false;
+        if (f.venue === "away" && isHome) return false;
+        if (f.opp && (side === "batting" ? pitchingTeam(r) : battingTeam(r)) !== f.opp) return false;
+      }
+      if (f.inning) {
+        var inn = +r.inning;
+        if (f.inning === "1-3" && !(inn >= 1 && inn <= 3)) return false;
+        if (f.inning === "4-6" && !(inn >= 4 && inn <= 6)) return false;
+        if (f.inning === "7+" && !(inn >= 7)) return false;
+      }
+      if (f.tto) {
+        var t = +r.n_thruorder_pitcher;
+        if (f.tto === "3" ? t < 3 : t !== +f.tto) return false;
+      }
+      return true;
+    };
   }
 
-  function renderLookup() {
-    document.getElementById("lookup-offline").hidden = state.api;
-    document.getElementById("lookup-form").hidden = !state.api;
-    var out = document.getElementById("lookup-results");
-    var html = "";
-    ["batter", "pitcher"].forEach(function (role) {
-      var entries = state.lookup.entries.filter(function (e) { return e.role === role; });
-      if (!entries.length) return;
-      var cols = lookupColumns(role);
-      var kind = role === "batter" ? "batters" : "pitchers";
-      html += '<h2 class="lookup-head">' + (role === "batter" ? "Batters" : "Pitchers") + "</h2>";
-      if (role === "batter" && state.evFloor) {
-        html += '<p class="hint">Batted-ball stats use ' + state.evFloor +
-          "+ mph balls in play, as set on the Batters tab. Pitches and K count every pitch.</p>";
+  function contactFilter() {
+    var f = lkFilters();
+    var minEv = f.minev === "" || f.minev === undefined ? null : parseFloat(f.minev);
+    return function (r) {
+      if (f.bb && r.bb_type !== f.bb) return false;
+      if (minEv !== null && !isNaN(minEv)) {
+        var ev = Stats.num(r.launch_speed);
+        if (ev === null || ev < minEv) return false;
       }
-      html += '<div class="table-wrap"><table class="data-grid"><thead><tr>';
-      cols.forEach(function (c) { html += "<th>" + esc(c.label) + "</th>"; });
-      html += "<th></th></tr></thead><tbody>";
-      entries.forEach(function (entry) {
-        var p = lookupPlayerRow(entry);
-        if (!p) return;
-        var open = state.lookup.expanded[entry.key];
-        html += '<tr class="player-row' + (open ? " open" : "") + '" data-key="' + esc(entry.key) + '">';
-        cols.forEach(function (c) {
-          if (c.key === "name") {
-            html += '<td class="t name-cell"><span class="caret">' + (open ? "▾" : "▸") + "</span>" + esc(p.name) + "</td>";
-          } else {
-            html += '<td class="' + (c.type === "text" ? "t" : "n") + '">' + esc(fmt(p[c.key], c.type)) + "</td>";
-          }
-        });
-        html += '<td><button class="ghost-btn del-row" data-remove="' + esc(entry.key) +
-          '" title="Remove from lookup">✕</button></td></tr>';
+      return true;
+    };
+  }
+
+  function contactFiltersActive() {
+    var f = lkFilters();
+    return !!(f.bb || (f.minev !== "" && f.minev !== undefined));
+  }
+
+  function filterSummary() {
+    var f = lkFilters();
+    var parts = [];
+    LOOKUP_FILTERS.forEach(function (def) {
+      var v = f[def.key];
+      if (v === "" || v === undefined) return;
+      if (def.number) { parts.push(def.label + " " + v + "+ mph"); return; }
+      var opt = def.options.filter(function (o) { return o[0] === v; })[0];
+      if (opt) parts.push(def.label + ": " + opt[1]);
+    });
+    return parts;
+  }
+
+  function renderFilterFields() {
+    var box = document.getElementById("lk-filter-fields");
+    var f = lkFilters();
+    box.innerHTML = LOOKUP_FILTERS.map(function (def) {
+      var id = "lkf-" + def.key;
+      var field;
+      if (def.number) {
+        field = '<input type="number" id="' + id + '" data-filter="' + def.key + '" min="0" max="125" step="1" placeholder="e.g. 95" value="' +
+          esc(f[def.key] || "") + '">';
+      } else {
+        field = '<select id="' + id + '" data-filter="' + def.key + '">' + def.options.map(function (o) {
+          return '<option value="' + esc(o[0]) + '"' + ((f[def.key] || "") === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>";
+        }).join("") + "</select>";
+      }
+      return '<label class="filter-field' + (def.contact ? " contact" : "") + '"><span>' + esc(def.label) +
+        (def.contact ? ' <em title="Narrows the contact columns and the PA list only">contact</em>' : "") +
+        "</span>" + field + "</label>";
+    }).join("");
+    box.querySelectorAll("[data-filter]").forEach(function (el) {
+      el.addEventListener(el.tagName === "SELECT" ? "change" : "input", function () {
+        f[el.getAttribute("data-filter")] = el.value.trim();
+        savePref("lkFilters", f);
+        renderLookupResults();
+      });
+    });
+  }
+
+  function lookupCols(side) {
+    return side === "batting"
+      ? { results: LK_RESULTS_BAT, contact: LK_CONTACT_BAT }
+      : { results: LK_RESULTS_PIT, contact: LK_CONTACT_PIT };
+  }
+
+  function statCells(line, cols) {
+    return cols.results.concat(cols.contact).map(function (c) {
+      return '<td class="n">' + esc(fmt(line[c.key], c.type)) + "</td>";
+    }).join("");
+  }
+
+  function groupHeader(cols, lead, tail) {
+    return '<tr class="group-row"><th colspan="' + lead + '"></th>' +
+      '<th colspan="' + cols.results.length + '" class="grp">Results · every pitch & PA matching the filters</th>' +
+      '<th colspan="' + cols.contact.length + '" class="grp contact-grp">Contact · balls in play' +
+      (contactFiltersActive() ? " (contact filters on)" : "") + "</th>" +
+      (tail ? '<th colspan="' + tail + '"></th>' : "") + "</tr>";
+  }
+
+  function lookupHistoryHTML(rows, side) {
+    var contactOn = contactFiltersActive();
+    var ok = contactFilter();
+    var list = rows.filter(function (r) {
+      return contactOn ? Stats.isBattedBall(r) && ok(r) : !!r.events;
+    }).slice().reverse();
+    var total = list.length;
+    list = list.slice(0, HISTORY_LIMIT);
+    var oppLabel = side === "batting" ? "Pitcher" : "Batter";
+    var cols = [["game_date", "Date"], ["opp_team", "Opp"], ["opp_player", oppLabel], ["inning", "Inn"],
+      ["count", "Count"], ["pitch_name", "Pitch"], ["release_speed", "Velo"], ["events", "Result"],
+      ["bb_type", "Batted ball"], ["launch_speed", "EV"], ["launch_angle", "LA"], ["hit_distance_sc", "Dist"],
+      ["estimated_woba_using_speedangle", "xwOBA"]];
+    var html = '<div class="history">';
+    if (!total) return html + '<p class="hint">No ' + (contactOn ? "balls in play" : "plate appearances") +
+      " match the filters.</p></div>";
+    if (total > HISTORY_LIMIT) html += '<p class="hint">Showing the latest ' + HISTORY_LIMIT + " of " + total.toLocaleString() + ".</p>";
+    html += "<table><thead><tr>" + cols.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>";
+    list.forEach(function (r) {
+      html += "<tr>" + cols.map(function (c) {
+        var v;
+        if (c[0] === "opp_team") v = (side === "batting" ? pitchingTeam(r) : battingTeam(r)) || "";
+        else if (c[0] === "count") v = (r.balls || "0") + "-" + (r.strikes || "0");
+        else if (c[0] === "events" || c[0] === "bb_type") v = (r[c[0]] || "").replace(/_/g, " ");
+        else if (c[0] === "estimated_woba_using_speedangle") v = r[c[0]] ? fmt(r[c[0]], "avg3") : "";
+        else v = r[c[0]];
+        return "<td>" + esc(v === "" || v === undefined || v === null ? "—" : v) + "</td>";
+      }).join("") + "</tr>";
+    });
+    return html + "</tbody></table></div>";
+  }
+
+  function entryLabel(e) {
+    if (e.kind === "team") return (TEAM_NAMES[e.team] || e.team);
+    return e.name;
+  }
+
+  /* A team row expands into each player's line, sortable by any column. */
+  function teamBreakdownHTML(entry, rows, cols) {
+    var byName = {};
+    rows.forEach(function (r) { (byName[r.player_name] = byName[r.player_name] || []).push(r); });
+    var contact = contactFilter();
+    var sort = state.lookup.sort;
+    var players = Object.keys(byName).map(function (name) {
+      var line = Stats.statLine(byName[name], { contact: contact });
+      line.name = name;
+      line.rows = byName[name];
+      return line;
+    });
+    players.sort(function (a, b) {
+      var va = a[sort.key], vb = b[sort.key];
+      if (va === null || va === undefined) return 1;
+      if (vb === null || vb === undefined) return -1;
+      if (typeof va === "string") return va.localeCompare(vb) * sort.dir;
+      return (va - vb) * sort.dir;
+    });
+    var all = cols.results.concat(cols.contact);
+    var html = '<div class="breakdown"><table class="data-grid"><thead>' + groupHeader(cols, 1, 0) + "<tr>" +
+      '<th data-sort="name">' + (entry.side === "batting" ? "Batter" : "Pitcher") + (sort.key === "name" ? (sort.dir < 0 ? " ▼" : " ▲") : "") + "</th>" +
+      all.map(function (c) {
+        return '<th data-sort="' + c.key + '">' + esc(c.label) + (sort.key === c.key ? (sort.dir < 0 ? " ▼" : " ▲") : "") + "</th>";
+      }).join("") + "</tr></thead><tbody>";
+    players.forEach(function (p) {
+      var key = entry.key + "|" + p.name;
+      var open = state.lookup.expanded[key];
+      html += '<tr class="player-row sub' + (open ? " open" : "") + '" data-key="' + esc(key) + '">' +
+        '<td class="t name-cell"><span class="caret">' + (open ? "▾" : "▸") + "</span>" + esc(p.name) + "</td>" +
+        statCells(p, cols) + "</tr>";
+      if (open) {
+        html += '<tr class="history-row"><td colspan="' + (all.length + 1) + '">' + lookupHistoryHTML(p.rows, entry.side) + "</td></tr>";
+      }
+    });
+    return html + "</tbody></table></div>";
+  }
+
+  function renderLookupResults() {
+    var out = document.getElementById("lookup-results");
+    var entries = state.lookup.entries;
+    document.getElementById("lk-filters").hidden = !entries.length;
+    var summary = filterSummary();
+    var html = "";
+    if (entries.length) {
+      html += '<p class="filter-summary">' + (summary.length
+        ? "<b>Filtered:</b> " + summary.map(esc).join(" · ")
+        : "No filters — showing every pitch in each date range.") + "</p>";
+    }
+    ["batting", "pitching"].forEach(function (side) {
+      var list = entries.filter(function (e) { return e.side === side; });
+      if (!list.length) return;
+      var cols = lookupCols(side);
+      var situation = situationFilter(side);
+      var contact = contactFilter();
+      var span = cols.results.length + cols.contact.length + 4;
+      html += '<h2 class="lookup-head">' + (side === "batting" ? "Batting" : "Pitching") + "</h2>";
+      html += '<div class="table-wrap"><table class="data-grid lookup-table"><thead>' + groupHeader(cols, 3, 1) +
+        "<tr><th>Name</th><th>Type</th><th>Dates</th>" +
+        cols.results.concat(cols.contact).map(function (c) { return "<th>" + esc(c.label) + "</th>"; }).join("") +
+        "<th></th></tr></thead><tbody>";
+      list.forEach(function (e) {
+        var rows = e.rows.filter(situation);
+        var line = Stats.statLine(rows, { contact: contact });
+        var open = state.lookup.expanded[e.key];
+        html += '<tr class="player-row' + (open ? " open" : "") + '" data-key="' + esc(e.key) + '">' +
+          '<td class="t name-cell"><span class="caret">' + (open ? "▾" : "▸") + "</span>" + esc(entryLabel(e)) + "</td>" +
+          '<td class="t"><span class="chip' + (e.kind === "team" ? " team" : "") + '">' + (e.kind === "team" ? "Team" : "Player") + "</span></td>" +
+          '<td class="t dates">' + esc(shortDate(e.start) + " – " + shortDate(e.end)) + "</td>" +
+          statCells(line, cols) +
+          '<td><button class="ghost-btn del-row" data-remove="' + esc(e.key) + '" title="Remove">✕</button></td></tr>';
         if (open) {
-          html += '<tr class="history-row"><td colspan="' + (cols.length + 1) + '">' + historyHTML(kind, p) + "</td></tr>";
+          html += '<tr class="history-row"><td colspan="' + span + '">' +
+            (e.kind === "team" ? teamBreakdownHTML(e, rows, cols) : lookupHistoryHTML(rows, side)) + "</td></tr>";
         }
       });
       html += "</tbody></table></div>";
     });
-    if (!html && state.api) {
-      html = '<p class="empty-note">Search any player and date range — this season, last season, or a single ' +
-        "week — to see their Statcast numbers and every plate appearance.</p>";
+    if (!entries.length && state.api) {
+      html = '<p class="empty-note">Look up a player or a whole team over any date range. Add as many as you like ' +
+        "to compare them side by side, then use the filters to split by pitch type, count, handedness and more.</p>";
     }
     out.innerHTML = html;
 
     out.querySelectorAll("tr.player-row").forEach(function (tr) {
-      tr.addEventListener("click", function () {
+      tr.addEventListener("click", function (ev) {
+        ev.stopPropagation();
         var key = tr.getAttribute("data-key");
         state.lookup.expanded[key] = !state.lookup.expanded[key];
-        renderLookup();
+        renderLookupResults();
+      });
+    });
+    out.querySelectorAll("th[data-sort]").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var key = th.getAttribute("data-sort");
+        var sort = state.lookup.sort;
+        if (sort.key === key) sort.dir = -sort.dir;
+        else { sort.key = key; sort.dir = key === "name" ? 1 : -1; }
+        renderLookupResults();
       });
     });
     out.querySelectorAll("button[data-remove]").forEach(function (btn) {
@@ -750,66 +1020,140 @@
         var key = btn.getAttribute("data-remove");
         state.lookup.entries = state.lookup.entries.filter(function (e) { return e.key !== key; });
         persistData("lookup", state.lookup.entries);
-        renderLookup();
+        renderLookupResults();
       });
     });
+  }
+
+  function renderLookup() {
+    document.getElementById("lookup-offline").hidden = state.api;
+    document.getElementById("lookup-form").hidden = !state.api;
+    renderLookupResults();
+  }
+
+  function addLookupEntry(entry, status) {
+    state.lookup.entries = state.lookup.entries.filter(function (e) { return e.key !== entry.key; });
+    state.lookup.entries.unshift(entry);
+    state.lookup.expanded[entry.key] = true;
+    persistData("lookup", state.lookup.entries);
+    setStatus(status, "Loaded " + entry.rows.length.toLocaleString() + " pitches for " + entryLabel(entry) +
+      (entry.kind === "team" ? " " + entry.side : "") + " (" + shortDate(entry.start) + " – " + shortDate(entry.end) + ").", "ok");
+    renderLookupResults();
   }
 
   function initLookup() {
     var form = document.getElementById("lookup-form");
     var nameInput = document.getElementById("lk-name");
     var role = document.getElementById("lk-role");
+    var teamSel = document.getElementById("lk-team");
+    var side = document.getElementById("lk-side");
     var start = document.getElementById("lk-start");
     var end = document.getElementById("lk-end");
+    var post = document.getElementById("lk-post");
     var status = document.getElementById("lk-status");
     var cands = document.getElementById("lk-candidates");
     var today = new Date();
+    var scope = "player";
+
+    teamSel.innerHTML = TEAM_CODES.map(function (c) {
+      return '<option value="' + c + '">' + esc(TEAM_NAMES[c]) + "</option>";
+    }).join("");
+    teamSel.value = loadPref("lkTeam", "NYY");
     start.value = daysAgo(14);
     end.value = isoDate(today);
     start.max = end.max = isoDate(today);
+    post.checked = loadPref("lkPost", true);
+    renderFilterFields();
+
+    form.querySelectorAll("[data-scope]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        scope = btn.getAttribute("data-scope");
+        form.querySelectorAll("[data-scope]").forEach(function (b) {
+          var on = b === btn;
+          b.classList.toggle("active", on);
+          b.setAttribute("aria-checked", on ? "true" : "false");
+        });
+        form.querySelector(".scope-player").hidden = scope !== "player";
+        form.querySelector(".scope-team").hidden = scope !== "team";
+        cands.innerHTML = "";
+      });
+    });
 
     form.querySelectorAll("[data-preset]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var y = today.getFullYear();
         var preset = btn.getAttribute("data-preset");
-        if (preset === "15") { start.value = daysAgo(14); end.value = isoDate(today); }
+        if (/^\d+$/.test(preset)) { start.value = daysAgo(+preset - 1); end.value = isoDate(today); }
         if (preset === "season") { start.value = y + "-03-01"; end.value = isoDate(today); }
         if (preset === "last") { start.value = (y - 1) + "-03-01"; end.value = (y - 1) + "-11-30"; }
       });
     });
 
+    document.getElementById("lk-reset-filters").addEventListener("click", function () {
+      state.lookup.filters = {};
+      savePref("lkFilters", {});
+      renderFilterFields();
+      renderLookupResults();
+    });
+
+    function query() {
+      return "&start=" + start.value + "&end=" + end.value + "&postseason=" + (post.checked ? 1 : 0);
+    }
+
     function fetchPlayer(c) {
       cands.innerHTML = "";
-      var r = role.value;
-      var q = "player?id=" + c.id + "&role=" + r + "&start=" + start.value + "&end=" + end.value +
-        "&postseason=" + (loadPref("svPost", true) ? 1 : 0);
+      var sd = role.value;
+      var q = "player?id=" + c.id + "&role=" + (sd === "batting" ? "batter" : "pitcher") + query();
       withProgress(status, "Pulling " + c.name + " from Baseball Savant", api(q)).then(function (payload) {
         var rows = rowsFromPayload(payload);
-        var range = shortDate(payload.start) + " – " + shortDate(payload.end);
         if (!rows.length) {
-          setStatus(status, "No Statcast pitches for " + c.name + " as a " + r + " from " + range + ".", "error");
+          setStatus(status, "No Statcast pitches for " + c.name + (sd === "batting" ? " as a batter" : " as a pitcher") +
+            " from " + shortDate(payload.start) + " – " + shortDate(payload.end) + ".", "error");
           return;
         }
-        var key = r + ":" + c.id;
-        state.lookup.entries = state.lookup.entries.filter(function (e) { return e.key !== key; });
-        state.lookup.entries.unshift({
-          key: key, id: c.id, role: r, name: rows[0].player_name || c.name,
+        addLookupEntry({
+          key: "player:" + sd + ":" + c.id + ":" + payload.start + ":" + payload.end,
+          kind: "player", side: sd, id: c.id, name: rows[0].player_name || c.name,
           start: payload.start, end: payload.end, rows: rows
-        });
-        state.lookup.expanded[key] = true;
-        persistData("lookup", state.lookup.entries);
-        setStatus(status, "Loaded " + rows.length.toLocaleString() + " pitches for " + (rows[0].player_name || c.name) +
-          " (" + range + ").", "ok");
-        renderLookup();
+        }, status);
+      }).catch(function (e) { setStatus(status, e.message, "error"); });
+    }
+
+    function fetchTeam() {
+      var team = teamSel.value, sd = side.value;
+      savePref("lkTeam", team);
+      var days = Math.round((new Date(end.value) - new Date(start.value)) / 86400000) + 1;
+      var label = "Pulling " + TEAM_NAMES[team] + " " + sd + (days > 45 ? " — a long range downloads every game day the first time" : "");
+      withProgress(status, label, api("team?team=" + team + "&side=" + sd + query())).then(function (payload) {
+        var rows = rowsFromPayload(payload);
+        if (!rows.length) {
+          setStatus(status, "No " + TEAM_NAMES[team] + " games in that date range.", "error");
+          return;
+        }
+        addLookupEntry({
+          key: "team:" + sd + ":" + team + ":" + payload.start + ":" + payload.end,
+          kind: "team", side: sd, team: team, name: TEAM_NAMES[team],
+          start: payload.start, end: payload.end, rows: rows
+        }, status);
       }).catch(function (e) { setStatus(status, e.message, "error"); });
     }
 
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();
       cands.innerHTML = "";
-      var name = nameInput.value.trim();
+      savePref("lkPost", post.checked);
       if (start.value > end.value) {
         setStatus(status, "The start date is after the end date.", "error");
+        return;
+      }
+      if (scope === "team") {
+        fetchTeam();
+        return;
+      }
+      var name = nameInput.value.trim();
+      if (!name) {
+        setStatus(status, "Type a player's name to look up.", "error");
+        nameInput.focus();
         return;
       }
       setStatus(status, "Searching for " + name + "…", "busy");
@@ -959,7 +1303,7 @@
       rebuildAll();
     });
 
-    document.querySelectorAll(".ev-btn").forEach(function (btn) {
+    document.querySelectorAll(".ev-btn[data-floor]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.evFloor = parseInt(btn.getAttribute("data-floor"), 10) || 0;
         savePref("evFloor", state.evFloor);
@@ -1006,7 +1350,7 @@
     var kind = state.tab;
     if (kind === "vegas" || kind === "lookup") return;
     document.getElementById("ev-floor").style.display = kind === "batters" ? "" : "none";
-    document.querySelectorAll(".ev-btn").forEach(function (btn) {
+    document.querySelectorAll(".ev-btn[data-floor]").forEach(function (btn) {
       btn.classList.toggle("active", (parseInt(btn.getAttribute("data-floor"), 10) || 0) === state.evFloor);
     });
     var labels = kind === "batters"

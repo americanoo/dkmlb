@@ -254,6 +254,55 @@ code { font-size: 12px; color: var(--text); }
 .lookup-head { font-size: 15px; margin: 18px 0 8px; }
 .empty-note { color: var(--muted); margin: 18px 0; }
 #lookup-results .table-wrap { margin-bottom: 8px; }
+.lookup-form select { max-width: 220px; }
+.scope-player, .scope-team { display: inline-flex; gap: 8px; align-items: center; }
+
+.filters {
+  margin-top: 14px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.filters-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-bottom: 10px; }
+.filters-head .hint { margin: 0; flex: 1; }
+.filter-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; }
+.filter-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.filter-field em {
+  font-style: normal; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--accent-2); margin-left: 4px;
+}
+.filter-field select, .filter-field input {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 5px 8px; border-radius: 6px; font: inherit; font-size: 13px; width: 100%;
+  color-scheme: dark;
+}
+.filter-field select:focus, .filter-field input:focus { outline: none; border-color: var(--accent); }
+.filter-summary { font-size: 12.5px; color: var(--muted); margin: 14px 0 0; }
+.filter-summary b { color: var(--text); font-weight: 600; }
+
+.data-grid tr.group-row th {
+  position: static;
+  text-align: center;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 6px 10px 4px;
+  cursor: default;
+  border-bottom: none;
+}
+.data-grid tr.group-row th.grp { border-bottom: 1px solid var(--border); color: var(--muted); }
+.data-grid tr.group-row th.contact-grp { color: var(--accent-2); border-left: 1px solid var(--border); }
+.data-grid td.dates { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.chip {
+  display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted);
+}
+.chip.team { border-color: var(--accent); color: var(--accent); }
+.breakdown { padding: 6px 12px 12px 30px; overflow-x: auto; }
+.breakdown .data-grid { font-size: 12.5px; }
+.breakdown .data-grid th { background: var(--bg); }
+.data-grid tr.player-row.sub td { padding-top: 5px; padding-bottom: 5px; }
 
 footer { padding: 8px 20px 20px; color: var(--muted); font-size: 12px; }
 

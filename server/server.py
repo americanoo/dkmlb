@@ -10,6 +10,7 @@ Statcast data from Baseball Savant through pybaseball:
                                       labeled by batter or pitcher name
   GET /api/players?name=              player search (MLBAM ids)
   GET /api/player?id=&role=&start=&end=   one player's pitches, any date range
+  GET /api/team?team=&side=&start=&end=   a team's batting or pitching pitches
 
 League pulls are cached per day under server/cache/, so a repeat or
 overlapping date range only downloads the days it hasn't seen.
@@ -22,6 +23,7 @@ Run:  python3 server/server.py            (add --lan to reach it from a phone
 import argparse
 import datetime as dt
 import json
+import shutil
 import socket
 import sys
 import threading
@@ -45,7 +47,8 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
-DAY_CACHE = CACHE_DIR / "statcast-v1"
+DAY_CACHE = CACHE_DIR / "statcast-v2"
+OLD_DAY_CACHES = [CACHE_DIR / "statcast-v1"]
 NAMES_FILE = CACHE_DIR / "names.json"
 
 # Columns the site reads, plus ids/game type used here for names and filters.
@@ -55,13 +58,24 @@ SITE_COLUMNS = [
     "outs_when_up", "inning", "hit_distance_sc", "launch_speed", "launch_angle",
     "effective_speed", "release_speed",
 ]
-CACHE_COLUMNS = SITE_COLUMNS + ["batter", "pitcher", "game_type", "game_pk",
-                                "at_bat_number", "pitch_number"]
+# Extra columns for the Lookup tab's filters and wOBA/xwOBA/chase stats.
+DETAIL_COLUMNS = [
+    "inning_topbot", "n_thruorder_pitcher", "zone", "woba_value", "woba_denom",
+    "estimated_woba_using_speedangle", "estimated_ba_using_speedangle",
+]
+CACHE_COLUMNS = SITE_COLUMNS + DETAIL_COLUMNS + ["batter", "pitcher", "game_type", "game_pk",
+                                                 "at_bat_number", "pitch_number"]
+TEAMS = {
+    "ATH", "ATL", "AZ", "BAL", "BOS", "CHC", "CIN", "CLE", "COL", "CWS", "DET", "HOU",
+    "KC", "LAA", "LAD", "MIA", "MIL", "MIN", "NYM", "NYY", "PHI", "PIT", "SD", "SEA",
+    "SF", "STL", "TB", "TEX", "TOR", "WSH",
+}
 
 REGULAR_SEASON = {"R"}
 POSTSEASON = {"F", "D", "L", "W"}
 
 MAX_LEAGUE_DAYS = 45
+MAX_TEAM_DAYS = 250
 # Savant keeps correcting a day's data for a while after the games end,
 # so only days at least this old are cached permanently.
 FINAL_AFTER_DAYS = 2
@@ -107,7 +121,8 @@ def trim(df):
     df = df[CACHE_COLUMNS]
     df = df.astype(object).where(df.notna(), "")
     for col in ("batter", "pitcher", "game_pk", "at_bat_number", "pitch_number",
-                "balls", "strikes", "outs_when_up", "inning"):
+                "balls", "strikes", "outs_when_up", "inning", "n_thruorder_pitcher",
+                "zone", "woba_denom"):
         df[col] = df[col].map(_int_str)
     df["game_date"] = df["game_date"].map(lambda v: str(v)[:10])
     return df.astype(str)
@@ -225,14 +240,24 @@ def seed_names(df, id_col):
     return {r[id_col]: r["player_name"] for _, r in pairs.iterrows() if r[id_col] and r["player_name"]}
 
 
-def to_payload(df, role, seed=None):
+def to_payload(df, role, seed=None, detail=False):
+    """Rows labeled with the batter's or pitcher's name. detail adds the
+    Lookup columns plus opp_player, the name on the other side of each pitch."""
     id_col = "batter" if role == "batter" else "pitcher"
-    names = resolve_names(df[id_col].unique().tolist(), seed)
+    opp_col = "pitcher" if role == "batter" else "batter"
+    ids = df[id_col].unique().tolist()
+    if detail:
+        ids += df[opp_col].unique().tolist()
+    names = resolve_names(ids, seed)
     out = df.copy()
     out["player_name"] = out[id_col].map(lambda i: names.get(i, f"Player {i}"))
+    columns = SITE_COLUMNS
+    if detail:
+        out["opp_player"] = out[opp_col].map(lambda i: names.get(i, f"Player {i}"))
+        columns = SITE_COLUMNS + DETAIL_COLUMNS + ["opp_player"]
     return {
-        "columns": SITE_COLUMNS,
-        "rows": out[SITE_COLUMNS].values.tolist(),
+        "columns": columns,
+        "rows": out[columns].values.tolist(),
         "count": int(len(out)),
         "players": int(out[id_col].nunique()),
     }
@@ -252,21 +277,14 @@ def fetch_day(day):
     return trim(df)
 
 
-def load_league(start, end):
-    """Every pitch from start..end (inclusive), cached per finished day."""
-    days = [start + dt.timedelta(days=n) for n in range((end - start).days + 1)]
+def ensure_days(days):
+    """Download any days not cached yet. Finished days go to the cache;
+    the most recent ones are returned in memory instead."""
     today = dt.date.today()
-    frames, missing = {}, []
-    for day in days:
-        path = day_path(day)
-        if path.exists():
-            frames[day] = pd.read_csv(path, dtype=str, keep_default_na=False)
-        else:
-            missing.append(day)
-
+    missing = [d for d in days if not day_path(d).exists()]
     set_progress(active=True, done=len(days) - len(missing), total=len(days),
                  label=f"Pulling {len(missing)} day(s) from Baseball Savant")
-    errors = []
+    fresh, errors = {}, []
     if missing:
         DAY_CACHE.mkdir(parents=True, exist_ok=True)
         with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
@@ -279,18 +297,50 @@ def load_league(start, end):
                     errors.append(f"{day.isoformat()}: {exc}")
                     bump_progress()
                     continue
-                frames[day] = df
                 if (today - day).days >= FINAL_AFTER_DAYS:
                     df.to_csv(day_path(day), index=False)
+                else:
+                    fresh[day] = df
                 bump_progress()
     if errors:
         raise ApiError(502, "Baseball Savant didn't return data for " + "; ".join(errors[:3]) +
                        (" …" if len(errors) > 3 else "") +
                        ". Days that did load are cached; try again in a minute.")
-    parts = [frames[d] for d in days if d in frames and len(frames[d])]
-    if not parts:
-        return trim(None)
-    return pd.concat(parts, ignore_index=True)
+    return fresh
+
+
+def iter_day_frames(start, end):
+    """Every pitch from start..end (inclusive), one day at a time, so long
+    ranges never hold more than a day of league data in memory."""
+    days = [start + dt.timedelta(days=n) for n in range((end - start).days + 1)]
+    fresh = ensure_days(days)
+    for day in days:
+        if day in fresh:
+            df = fresh[day]
+        else:
+            df = pd.read_csv(day_path(day), dtype=str, keep_default_na=False)
+        if len(df):
+            yield df
+
+
+def load_league(start, end):
+    parts = list(iter_day_frames(start, end))
+    return pd.concat(parts, ignore_index=True) if parts else trim(None)
+
+
+def team_mask(df, team, side):
+    """Rows where `team` is batting (side=batting) or pitching."""
+    top = df["inning_topbot"] == "Top"
+    batting = (top & (df["away_team"] == team)) | (~top & (df["home_team"] == team))
+    if side == "batting":
+        return batting
+    return ((df["away_team"] == team) | (df["home_team"] == team)) & ~batting
+
+
+def load_team(team, side, start, end):
+    parts = [df[team_mask(df, team, side)] for df in iter_day_frames(start, end)]
+    parts = [p for p in parts if len(p)]
+    return pd.concat(parts, ignore_index=True) if parts else trim(None)
 
 
 def player_search(name):
@@ -359,15 +409,16 @@ def parse_date(qs, key, default=None):
         raise ApiError(400, f"{key} must be a date like 2026-09-27.")
 
 
-def parse_range(qs, max_days=None):
+def parse_range(qs, max_days=None, limit_note=None):
     today = dt.date.today()
     start = parse_date(qs, "start")
     end = min(parse_date(qs, "end", today), today)
     if start > end:
         raise ApiError(400, "The start date is after the end date.")
     if max_days and (end - start).days + 1 > max_days:
-        raise ApiError(400, f"League-wide pulls are limited to {max_days} days at a time "
-                            f"(that's about {max_days * 4300:,} pitches). Use Player lookup for longer ranges.")
+        raise ApiError(400, limit_note or (
+            f"League-wide pulls are limited to {max_days} days at a time "
+            f"(that's about {max_days * 4300:,} pitches). Use the Lookup tab for longer ranges."))
     return start, end
 
 
@@ -454,8 +505,28 @@ class Handler(SimpleHTTPRequestHandler):
                         set_progress(active=False)
                 df = sort_pitches(filter_game_types(df, flag(qs, "postseason")))
                 id_col = "batter" if role == "batter" else "pitcher"
-                payload = to_payload(df, role, seed_names(df, id_col))
+                payload = to_payload(df, role, seed_names(df, id_col), detail=True)
                 payload.update(start=start.isoformat(), end=end.isoformat(), role=role, id=player_id)
+                self.send_json(200, payload)
+            elif path == "/api/team":
+                team = (qs.get("team") or [""])[0].upper()
+                if team not in TEAMS:
+                    raise ApiError(400, "Pick a team from the list.")
+                side = (qs.get("side") or ["batting"])[0]
+                if side not in ("batting", "pitching"):
+                    raise ApiError(400, "side must be batting or pitching.")
+                start, end = parse_range(qs, MAX_TEAM_DAYS, f"Team lookups are limited to {MAX_TEAM_DAYS} "
+                                                             "days, about one season, at a time.")
+                with fetch_lock:
+                    try:
+                        df = load_team(team, side, start, end)
+                    finally:
+                        set_progress(active=False)
+                df = sort_pitches(filter_game_types(df, flag(qs, "postseason")))
+                role = "batter" if side == "batting" else "pitcher"
+                # Day files come from Savant's pitcher-typed search: player_name is the pitcher.
+                payload = to_payload(df, role, seed_names(df, "pitcher"), detail=True)
+                payload.update(start=start.isoformat(), end=end.isoformat(), team=team, side=side)
                 self.send_json(200, payload)
             else:
                 raise ApiError(404, "Unknown API endpoint.")
@@ -481,6 +552,9 @@ def main():
                         help="also accept connections from other devices on your network (e.g. your phone)")
     parser.add_argument("--open", action="store_true", help="open the site in your browser")
     args = parser.parse_args()
+
+    for old in OLD_DAY_CACHES:
+        shutil.rmtree(old, ignore_errors=True)  # superseded cache formats
 
     host = "0.0.0.0" if args.lan else "127.0.0.1"
     try:

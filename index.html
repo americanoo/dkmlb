@@ -59,7 +59,7 @@
     <button class="tab active" data-tab="batters">Batters</button>
     <button class="tab" data-tab="pitchers">Pitchers</button>
     <button class="tab" data-tab="vegas">Vegas</button>
-    <button class="tab" data-tab="lookup">Player Lookup</button>
+    <button class="tab" data-tab="lookup">Lookup</button>
   </nav>
 
   <section class="controls">
@@ -94,27 +94,52 @@
   </section>
 
   <section id="lookup-panel" style="display:none">
-    <p id="lookup-offline" class="hint" hidden>Player lookup pulls any player's history from Baseball Savant,
+    <p id="lookup-offline" class="hint" hidden>Lookup pulls any player's or team's history from Baseball Savant,
       so it needs the local stats server running. Double-click <code>start-server.command</code>, then open
       http://localhost:8000.</p>
     <form id="lookup-form" class="lookup-form">
-      <input type="search" id="lk-name" placeholder="Player name, e.g. Aaron Judge" aria-label="Player name" required>
-      <select id="lk-role" aria-label="Look up as">
-        <option value="batter">as batter</option>
-        <option value="pitcher">as pitcher</option>
-      </select>
+      <div class="splits" role="radiogroup" aria-label="Look up">
+        <button type="button" class="ev-btn active" data-scope="player" role="radio" aria-checked="true">Player</button>
+        <button type="button" class="ev-btn" data-scope="team" role="radio" aria-checked="false">Team</button>
+      </div>
+      <span class="scope-player">
+        <input type="search" id="lk-name" placeholder="Player name, e.g. Aaron Judge" aria-label="Player name">
+        <select id="lk-role" aria-label="Look up player as">
+          <option value="batting">as batter</option>
+          <option value="pitching">as pitcher</option>
+        </select>
+      </span>
+      <span class="scope-team" hidden>
+        <select id="lk-team" aria-label="Team"></select>
+        <select id="lk-side" aria-label="Team stats">
+          <option value="batting">batting</option>
+          <option value="pitching">pitching</option>
+        </select>
+      </span>
       <input type="date" id="lk-start" aria-label="From" required>
       <span class="muted">to</span>
       <input type="date" id="lk-end" aria-label="To" required>
-      <button type="submit" class="upload-btn as-button">Search</button>
       <span class="presets">
-        <button type="button" class="ghost-btn" data-preset="15">Last 15 days</button>
+        <button type="button" class="ghost-btn" data-preset="7">7 days</button>
+        <button type="button" class="ghost-btn" data-preset="15">15 days</button>
+        <button type="button" class="ghost-btn" data-preset="30">30 days</button>
         <button type="button" class="ghost-btn" data-preset="season">This season</button>
         <button type="button" class="ghost-btn" data-preset="last">Last season</button>
       </span>
+      <label class="check"><input type="checkbox" id="lk-post" checked> Postseason</label>
+      <button type="submit" class="upload-btn as-button">Look up</button>
     </form>
     <div id="lk-candidates" class="candidates"></div>
     <p id="lk-status" class="sv-status" role="status"></p>
+
+    <div id="lk-filters" class="filters" hidden>
+      <div class="filters-head">
+        <span class="savant-title">Filters</span>
+        <span class="hint">Change any filter and every result below updates instantly — nothing is re-downloaded.</span>
+        <button type="button" id="lk-reset-filters" class="ghost-btn">Reset filters</button>
+      </div>
+      <div id="lk-filter-fields" class="filter-fields"></div>
+    </div>
     <div id="lookup-results"></div>
   </section>
 
