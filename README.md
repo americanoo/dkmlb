@@ -30,7 +30,7 @@ to stop the server.
 When the server is running, the site shows a **Pull from Baseball Savant**
 panel:
 
-- **Batters / Pitchers date ranges** (defaults: last 8 days for batters,
+- **Batters / Pitchers date ranges** (defaults: last 15 days for batters,
   last 30 for pitchers; 5d / 10d / 15d buttons set the batter range in one
   click) and **Include postseason**. One click pulls every
   pitch league-wide for each range, so batters get true pitches seen and
@@ -118,6 +118,16 @@ Some stats need Savant columns that older pulls and cleaned CSVs don't have
 lacks them, those headers are marked ⚠ and a notice above the table offers
 **Re-pull now**. If the page says the stats server is running older code,
 close its Terminal window and start it again so updates take effect.
+
+**Split columns** give a stat its own columns for the **last 15, 10 and 5
+days** (and optionally vs L / vs R), e.g. HH 15d, HH 10d, HH 5d beside HH.
+Pick stats to split in the panel (or split every stat shown). Day windows
+count back from the most recent game in the loaded data, so pull at least
+15 days (the batter pull now defaults to 15; a notice appears when the data
+is shorter than a window). Split columns ignore the table's vs LHP/RHP
+buttons, sort like any stat, can be rated, and work in formulas as
+`hh__l5`, `woba__l15`, `woba__vsR`. The Lookup tab's day rows use the same
+rule (windows end on the latest game, or yesterday), so the numbers match.
 
 **Formula stats** turn any combination into your own column. Examples:
 `hh + barrels * 2 - k`, `hh / pa * 100`,

@@ -107,6 +107,22 @@
       (HH beside HardHit%, Chases beside Chase%) so you can check them against PA.</p>
     <div id="cols-groups" class="cols-groups"></div>
 
+    <div class="splits-box">
+      <h3>Split columns</h3>
+      <p class="hint">Give a stat its own columns for the last 15, 10 and 5 days (and, if you like, vs L / vs R),
+        e.g. <b>HH 15d</b>, <b>HH 10d</b>, <b>HH 5d</b> beside HH. Day windows count back from the most recent game
+        in the loaded data, so pull at least 15 days. Split columns ignore the vs LHP/RHP buttons above the table,
+        sort like any stat, can be rated, and work in formulas as <code>hh__l5</code>, <code>woba__l15</code>,
+        <code>woba__vsR</code>.</p>
+      <div id="split-dims" class="split-dims" role="group" aria-label="Splits to show"></div>
+      <div id="split-stats" class="split-chips"></div>
+      <div class="split-add">
+        <label class="add-stat"><span>Add a stat to split</span><select id="add-split"></select></label>
+        <button type="button" class="ghost-btn" id="split-visible">Split every stat shown in the table</button>
+        <button type="button" class="ghost-btn" id="split-clear">Remove all splits</button>
+      </div>
+    </div>
+
     <div class="formula-box">
       <h3>Your formula stats</h3>
       <p class="hint">Combine any stats into your own column, e.g. <code>hh + barrels * 2</code>,

@@ -202,6 +202,18 @@ main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; }
 .col-check input { accent-color: var(--accent); }
 .data-grid th.custom-col { color: var(--accent-2); }
 .data-grid th.missing-col { color: #e0a85a; }
+.data-grid th.split-col { color: #9fb7ff; font-style: italic; }
+.splits-box { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.splits-box h3 { margin: 0 0 4px; font-size: 14px; }
+.split-dims { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 6px 0 8px; }
+.split-dims .col-check { width: auto; }
+.split-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.split-chip {
+  display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 10px;
+}
+.split-add { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.split-add .add-stat { margin-top: 0; min-width: 220px; }
 .data-note {
   display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
   margin: 12px 20px 0; padding: 10px 14px; border-radius: 8px;

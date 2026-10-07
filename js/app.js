@@ -84,14 +84,122 @@
     var missing = {};
     if (!rows.length) return missing;
     var sample = rows[0];
-    Object.keys(NEEDS).forEach(function (k) {
-      if (!(NEEDS[k] in sample)) missing[NEEDS[k]] = true;
+    Object.keys(NEEDS).map(function (k) { return NEEDS[k]; }).forEach(function (col) {
+      if (!(col in sample)) missing[col] = true;
     });
     return missing;
   }
 
+  /* True when a column can't be computed from the loaded data. */
+  function defMissing(def, missing) {
+    var key = def.split ? def.base : def.key;
+    return !!(NEEDS[key] && missing[NEEDS[key]]);
+  }
+
+  /* Split columns: a stat recomputed over part of a player's rows, keyed
+     "<stat>__<dim>" (e.g. woba__l5, hh__vsR). Day windows count back from
+     the most recent game in the loaded data. Computed from all of a
+     player's rows, independent of the table's vs LHP/RHP filter. */
+  var SPLITS_GROUP = "Splits";
+  var WINDOW_DAYS = { l15: 15, l10: 10, l5: 5 };
+  var SPLIT_DIMS = {
+    batters: [["l15", "last 15 days", "15d"], ["l10", "last 10 days", "10d"], ["l5", "last 5 days", "5d"],
+      ["vsL", "vs LHP", "vs L"], ["vsR", "vs RHP", "vs R"]],
+    pitchers: [["l15", "last 15 days", "15d"], ["l10", "last 10 days", "10d"], ["l5", "last 5 days", "5d"],
+      ["vsL", "vs LHB", "vs L"], ["vsR", "vs RHB", "vs R"]]
+  };
+  var splits = { batters: loadSplits("batters"), pitchers: loadSplits("pitchers") };
+
+  function loadSplits(kind) {
+    var v = loadPref("splits_" + kind, null) || {};
+    var valid = SPLIT_DIMS[kind].map(function (d) { return d[0]; });
+    return {
+      dims: Array.isArray(v.dims) ? v.dims.filter(function (d) { return valid.indexOf(d) !== -1; }) : ["l15", "l10", "l5"],
+      stats: Array.isArray(v.stats) ? v.stats : []
+    };
+  }
+
+  /* First and last game dates in a set of rows (ISO strings). */
+  function dateSpan(rows) {
+    var lo = null, hi = null;
+    rows.forEach(function (r) {
+      var d = r.game_date;
+      if (!d) return;
+      if (lo === null || d < lo) lo = d;
+      if (hi === null || d > hi) hi = d;
+    });
+    return { start: lo, end: hi, days: lo ? Math.round((Date.parse(hi) - Date.parse(lo)) / 86400000) + 1 : 0 };
+  }
+
+  function saveSplits(kind) {
+    savePref("splits_" + kind, splits[kind]);
+  }
+
+  function splitKey(stat, dim) {
+    return stat + "__" + dim;
+  }
+
+  function splittable(st) {
+    return !st.text && !st.noFormula && !st.dk && !st.vegas && !st.custom && !st.split;
+  }
+
+  function splitDefs(kind) {
+    var out = [];
+    splits[kind].stats.forEach(function (stat) {
+      var base = Catalog.stats[kind].filter(function (st) { return st.key === stat; })[0];
+      if (!base) return;
+      var end = state[kind].span && state[kind].span.end;
+      SPLIT_DIMS[kind].forEach(function (d) {
+        if (splits[kind].dims.indexOf(d[0]) === -1) return;
+        var when = WINDOW_DAYS[d[0]] && end ? " (ending " + shortDate(end) + ")" : "";
+        out.push({
+          key: splitKey(stat, d[0]), label: base.label + " " + d[2], type: base.type, group: SPLITS_GROUP,
+          desc: base.label + ", " + d[1] + when + (base.desc ? ": " + base.desc : ""), lower: base.lower,
+          split: true, base: stat, dim: d[0]
+        });
+      });
+    });
+    return out;
+  }
+
+  function splitRowFilter(kind, dim) {
+    if (WINDOW_DAYS[dim]) {
+      var end = state[kind].span && state[kind].span.end;
+      if (!end) return function () { return false; };
+      var from = new Date(end + "T00:00:00Z");
+      from.setUTCDate(from.getUTCDate() - (WINDOW_DAYS[dim] - 1));
+      var cutoff = from.toISOString().slice(0, 10);
+      return function (r) { return r.game_date >= cutoff; };
+    }
+    var hand = dim === "vsL" ? "L" : "R";
+    return kind === "batters"
+      ? function (r) { return r.p_throws === hand; }
+      : function (r) { return r.stand === hand; };
+  }
+
+  function applySplits(kind, players, rows, contact) {
+    var sp = splits[kind];
+    if (!sp.stats.length || !sp.dims.length) return;
+    var defs = {};
+    Catalog.stats[kind].forEach(function (st) { defs[st.key] = st; });
+    sp.dims.forEach(function (dim) {
+      var lines = {};
+      Stats.aggregate(rows.filter(splitRowFilter(kind, dim)), { contact: contact })
+        .forEach(function (l) { lines[l.name] = l; });
+      players.forEach(function (p) {
+        var line = lines[p.name];
+        sp.stats.forEach(function (stat) {
+          var v = line ? line[stat] : null;
+          // No plate appearances in the split: counts are 0, rates are blank.
+          if (!line && defs[stat] && defs[stat].type === "int") v = 0;
+          p[splitKey(stat, dim)] = typeof v === "number" ? v : null;
+        });
+      });
+    });
+  }
+
   function allStats(kind) {
-    return Catalog.stats[kind].concat(customDefs(kind));
+    return Catalog.stats[kind].concat(splitDefs(kind), customDefs(kind));
   }
 
   function statDef(kind, key) {
@@ -106,7 +214,8 @@
      before it (a formula can build on an earlier one). */
   function formulaVars(kind, upto) {
     var vars = {};
-    Catalog.stats[kind].forEach(function (st) { if (ratable(st)) vars[st.key.toLowerCase()] = st.key; });
+    Catalog.stats[kind].concat(splitDefs(kind))
+      .forEach(function (st) { if (ratable(st)) vars[st.key.toLowerCase()] = st.key; });
     custom[kind].slice(0, upto === undefined ? custom[kind].length : upto)
       .forEach(function (c) { vars[c.key.toLowerCase()] = c.key; });
     return vars;
@@ -245,6 +354,8 @@
     var rows = splitFilter(kind, s.rows);
     var contact = kind === "batters" && state.evFloor ? evFloorContact() : null;
     s.players = Stats.aggregate(rows, { contact: contact });
+    s.span = dateSpan(s.rows);
+    applySplits(kind, s.players, s.rows, contact);
     if (state.dk.length) DK.matchSalaries(s.players, state.dk);
     Vegas.attach(s.players, state.vegas, kind);
     applyCustom(kind, s.players);
@@ -311,10 +422,29 @@
   }
 
   /* Explain blank stat columns when the loaded data lacks their columns. */
+  /* Longest day window in use that's longer than the loaded data. */
+  function shortWindow(kind) {
+    var span = state[kind].span;
+    if (!span || !span.days || !splits[kind].stats.length) return null;
+    var longest = 0;
+    splits[kind].dims.forEach(function (d) { if (WINDOW_DAYS[d] > longest) longest = WINDOW_DAYS[d]; });
+    return longest > span.days ? longest : null;
+  }
+
   function renderDataNote() {
     var note = document.getElementById("data-note");
     var kind = statsTab();
     var missing = kind ? missingColumns(kind) : {};
+    var tooShort = kind ? shortWindow(kind) : null;
+    if (kind && tooShort && !Object.keys(missing).length) {
+      var span = state[kind].span;
+      note.innerHTML = "<span>Your " + kind + " data covers " + span.days + " day" + (span.days === 1 ? "" : "s") + " (" +
+        esc(shortDate(span.start)) + " – " + esc(shortDate(span.end)) + "), so day-window columns longer than that " +
+        "show the same games as the whole table. Pull at least " + tooShort + " days to fill the " + tooShort + "-day columns" +
+        (kind === "batters" ? " (the 15d button sets it)." : ".") + "</span>";
+      note.hidden = false;
+      return;
+    }
     if (!kind || !Object.keys(missing).length) {
       note.hidden = true;
       return;
@@ -366,7 +496,7 @@
 
   /* Stats grouped for <select> menus: [[group, [defs]], ...]. */
   function groupedStats(kind, filter) {
-    var groups = Catalog.groups.concat([MY_FORMULAS]);
+    var groups = Catalog.groups.concat([SPLITS_GROUP, MY_FORMULAS]);
     var all = allStats(kind);
     return groups.map(function (g) {
       return [g, all.filter(function (st) { return st.group === g && filter(st); })];
@@ -475,8 +605,15 @@
     var hasVegas = state.vegas.length > 0;
     var shown = {};
     visibleCols[kind].forEach(function (k) { shown[k] = true; });
-    var showCols = [{ key: "name", label: "Player", type: "text" }].concat(allStats(kind).filter(function (c) {
-      if (!shown[c.key]) return false;
+    var splitsOf = {};
+    splitDefs(kind).forEach(function (d) { (splitsOf[d.base] = splitsOf[d.base] || []).push(d); });
+    var ordered = [];
+    Catalog.stats[kind].forEach(function (st) {
+      if (shown[st.key]) ordered.push(st);
+      (splitsOf[st.key] || []).forEach(function (d) { ordered.push(d); });
+    });
+    ordered = ordered.concat(customDefs(kind).filter(function (c) { return shown[c.key]; }));
+    var showCols = [{ key: "name", label: "Player", type: "text" }].concat(ordered.filter(function (c) {
       if (c.dk && !hasDK) return false;
       if (c.vegas && !hasVegas) return false;
       return true;
@@ -486,9 +623,9 @@
     var html = "<thead><tr>";
     showCols.forEach(function (c) {
       var arrow = s.sortKey === c.key ? (s.sortDir === -1 ? " ▼" : " ▲") : "";
-      var absent = NEEDS[c.key] && missing[NEEDS[c.key]];
+      var absent = c.key !== "name" && defMissing(c, missing);
       var tip = (c.desc || "") + (absent ? " — not in the loaded data: pull from Savant again (or upload a full, uncleaned Savant export)" : "");
-      var cls = [c.custom ? "custom-col" : "", absent ? "missing-col" : ""].join(" ").trim();
+      var cls = [c.custom ? "custom-col" : "", c.split ? "split-col" : "", absent ? "missing-col" : ""].join(" ").trim();
       html += '<th data-key="' + c.key + '"' + (tip ? ' title="' + esc(tip) + '"' : "") +
         (cls ? ' class="' + cls + '"' : "") + ">" + esc(c.label) + (absent ? " ⚠" : "") + arrow + "</th>";
     });
@@ -722,7 +859,7 @@
     var pitEnd = document.getElementById("sv-pit-end");
     var post = document.getElementById("sv-post");
     var today = isoDate(new Date());
-    batStart.value = loadPref("svBatStart", daysAgo(8));
+    batStart.value = loadPref("svBatStart", daysAgo(14));
     pitStart.value = loadPref("svPitStart", daysAgo(30));
     batEnd.value = today;
     pitEnd.value = today;
@@ -864,8 +1001,17 @@
     return d.toISOString().slice(0, 10);
   }
 
+  /* Day windows end on the latest game in the data, or yesterday if the
+     player hasn't played since (today's games usually haven't happened yet),
+     matching the day-window split columns on the Batters/Pitchers tabs. */
+  function windowEnd(entry) {
+    var yesterday = windowStart(entry.end, 2);
+    var last = dateSpan(entry.rows).end;
+    return last && last > yesterday ? last : yesterday;
+  }
+
   function windowRows(entry, days) {
-    var from = windowStart(entry.end, days);
+    var from = windowStart(windowEnd(entry), days);
     return entry.rows.filter(function (r) { return r.game_date >= from; });
   }
 
@@ -1129,7 +1275,7 @@
           var open = state.lookup.expanded[key];
           var focus = side === "batting" && days === 5;
           html += '<tr class="player-row window-row' + (open ? " open" : "") + (focus ? " focus" : "") + '" data-key="' + esc(key) + '"' +
-            ' title="' + esc(shortDate(windowStart(e.end, days)) + " – " + shortDate(e.end)) + '">' +
+            ' title="' + esc(shortDate(windowStart(windowEnd(e), days)) + " – " + shortDate(windowEnd(e))) + '">' +
             '<td class="t win"><span class="caret">' + (open ? "▾" : "▸") + "</span>Last " + days + " days" +
             (focus ? ' <span class="focus-tag">key for hitters</span>' : "") + "</td>" +
             statCells(line, cols) + "<td></td></tr>";
@@ -1237,7 +1383,8 @@
        a totals failure still keeps the Statcast rows. */
     function load(base, statcastPath, totalsPath, label) {
       var end = isoDate(new Date());
-      var q = "&start=" + daysAgo(LOOKUP_DAYS - 1) + "&end=" + end + "&postseason=" + (post.checked ? 1 : 0);
+      // One extra day: windows can end yesterday, so 15 days reach back 15 days from then.
+      var q = "&start=" + daysAgo(LOOKUP_DAYS) + "&end=" + end + "&postseason=" + (post.checked ? 1 : 0);
       var totals = api(totalsPath).then(null, function (e) { return { error: e.message }; });
       return withProgress(status, label, api(statcastPath + q)).then(function (payload) {
         return totals.then(function (t) {
@@ -1431,10 +1578,13 @@
       "Columns & formulas · " + (kind === "batters" ? "Batters" : "Pitchers");
     var shown = {};
     visibleCols[kind].forEach(function (k) { shown[k] = true; });
-    var all = allStats(kind);
+    var all = allStats(kind).filter(function (st) { return !st.split; });
+    var splitCount = splitDefs(kind).length;
     document.getElementById("cols-count").textContent =
-      all.filter(function (st) { return shown[st.key]; }).length + " of " + all.length + " stats shown";
-    document.getElementById("cols-groups").innerHTML = groupedStats(kind, function () { return true; })
+      all.filter(function (st) { return shown[st.key]; }).length + " of " + all.length + " stats shown" +
+      (splitCount ? " + " + splitCount + " split column" + (splitCount === 1 ? "" : "s") : "");
+    renderSplitsBox(kind);
+    document.getElementById("cols-groups").innerHTML = groupedStats(kind, function (st) { return !st.split; })
       .map(function (pair) {
         return '<fieldset class="col-group"><legend>' + esc(pair[0]) +
           ' <button type="button" class="link-btn" data-group-on="' + esc(pair[0]) + '">all</button>' +
@@ -1454,6 +1604,39 @@
       }).join("");
       fmtSel.value = "num1";
     }
+  }
+
+  function renderSplitsBox(kind) {
+    var sp = splits[kind];
+    document.getElementById("split-dims").innerHTML = SPLIT_DIMS[kind].map(function (d) {
+      return '<label class="col-check split-dim"><input type="checkbox" data-dim="' + d[0] + '"' +
+        (sp.dims.indexOf(d[0]) !== -1 ? " checked" : "") + "> " + esc(d[1]) + "</label>";
+    }).join("");
+    var defs = {};
+    Catalog.stats[kind].forEach(function (st) { defs[st.key] = st; });
+    var chips = sp.stats.filter(function (k) { return defs[k]; });
+    document.getElementById("split-stats").innerHTML = chips.length ? chips.map(function (k) {
+      return '<span class="split-chip">' + esc(defs[k].label) + ' <button type="button" class="rm-btn" data-unsplit="' + esc(k) +
+        '" aria-label="Stop splitting ' + esc(defs[k].label) + '">✕</button></span>';
+    }).join("") : '<p class="hint">No stats split yet.</p>';
+    var options = groupedStats(kind, function (st) { return splittable(st) && sp.stats.indexOf(st.key) === -1; });
+    document.getElementById("add-split").innerHTML = '<option value="">Choose a stat…</option>' + options.map(function (pair) {
+      return '<optgroup label="' + esc(pair[0]) + '">' + pair[1].map(function (st) {
+        return '<option value="' + esc(st.key) + '">' + esc(st.label) + "</option>";
+      }).join("") + "</optgroup>";
+    }).join("");
+  }
+
+  /* After the split setup changes: drop ratings on split columns that no
+     longer exist, then recompute. */
+  function splitsChanged(kind) {
+    saveSplits(kind);
+    var live = {};
+    splitDefs(kind).forEach(function (d) { live[d.key] = true; });
+    weights[kind] = weights[kind].filter(function (w) { return w.key.indexOf("__") === -1 || live[w.key]; });
+    saveWeights(kind);
+    rebuild(kind);
+    renderColsPanel();
   }
 
   function setColumns(kind, keys) {
@@ -1571,7 +1754,7 @@
         var mode = btn.getAttribute("data-cols");
         var keys = mode === "default"
           ? Catalog.defaultColumns[kind].concat(custom[kind].map(function (c) { return c.key; }))
-          : mode === "all" ? allStats(kind).map(function (st) { return st.key; }) : [];
+          : mode === "all" ? allStats(kind).filter(function (st) { return !st.split; }).map(function (st) { return st.key; }) : [];
         setColumns(kind, keys);
       });
     });
@@ -1592,6 +1775,46 @@
         .map(function (st) { return st.key; });
       var keys = visibleCols[kind].filter(function (k) { return groupKeys.indexOf(k) === -1; });
       setColumns(kind, on ? keys.concat(groupKeys) : keys);
+    });
+
+    document.getElementById("split-dims").addEventListener("change", function (ev) {
+      var kind = statsTab();
+      var dim = ev.target.getAttribute("data-dim");
+      if (!kind || !dim) return;
+      var dims = splits[kind].dims.filter(function (d) { return d !== dim; });
+      if (ev.target.checked) dims.push(dim);
+      splits[kind].dims = SPLIT_DIMS[kind].map(function (d) { return d[0]; })
+        .filter(function (d) { return dims.indexOf(d) !== -1; });
+      splitsChanged(kind);
+    });
+    document.getElementById("split-stats").addEventListener("click", function (ev) {
+      var kind = statsTab();
+      var stat = ev.target.getAttribute("data-unsplit");
+      if (!kind || !stat) return;
+      splits[kind].stats = splits[kind].stats.filter(function (k) { return k !== stat; });
+      splitsChanged(kind);
+    });
+    document.getElementById("add-split").addEventListener("change", function () {
+      var kind = statsTab();
+      if (!kind || !this.value) return;
+      splits[kind].stats.push(this.value);
+      splitsChanged(kind);
+    });
+    document.getElementById("split-visible").addEventListener("click", function () {
+      var kind = statsTab();
+      if (!kind) return;
+      var shown = {};
+      visibleCols[kind].forEach(function (k) { shown[k] = true; });
+      Catalog.stats[kind].forEach(function (st) {
+        if (shown[st.key] && splittable(st) && splits[kind].stats.indexOf(st.key) === -1) splits[kind].stats.push(st.key);
+      });
+      splitsChanged(kind);
+    });
+    document.getElementById("split-clear").addEventListener("click", function () {
+      var kind = statsTab();
+      if (!kind) return;
+      splits[kind].stats = [];
+      splitsChanged(kind);
     });
 
     var form = document.getElementById("formula-form");
