@@ -14,6 +14,7 @@
     dk: [],
     vegas: [],
     lookup: { entries: [], expanded: {}, filters: loadPref("lkFilters", {}), sort: { key: "pa", dir: -1 } },
+    leaders: { batters: null, pitchers: null },
     search: "",
     slateOnly: false,
     minSample: { batters: 1, pitchers: 1 },
@@ -76,7 +77,7 @@
     pulled: "hc_x", pull_pct: "hc_x", oppo: "hc_x", oppo_pct: "hc_x",
     avg_spin: "release_spin_rate"
   };
-  var MIN_SERVER_VERSION = 5;
+  var MIN_SERVER_VERSION = 6;
 
   /* Data columns the loaded rows don't carry at all. */
   function missingColumns(kind) {
@@ -92,6 +93,10 @@
 
   /* True when a column can't be computed from the loaded data. */
   function defMissing(def, missing) {
+    if (def.split && LEADER_DIMS[def.dim]) {
+      var lb = state.leaders[statsTab() || "batters"];
+      return !lb || lb.missing.indexOf(LEADER_FIELD[def.base]) !== -1;
+    }
     var key = def.split ? def.base : def.key;
     return !!(NEEDS[key] && missing[NEEDS[key]]);
   }
@@ -102,21 +107,42 @@
      player's rows, independent of the table's vs LHP/RHP filter. */
   var SPLITS_GROUP = "Splits";
   var WINDOW_DAYS = { l15: 15, l10: 10, l5: 5 };
+  /* Career (Statcast era) and season come from Baseball Savant's season
+     leaderboards via the stats server; these stats exist there. Pitcher-side
+     names map to the same leaderboard fields. */
+  var LEADER_FIELD = {
+    pa: "pa", woba: "woba", xwoba: "xwoba", bbe: "bbe", hh: "hh", hardhit_pct: "hardhit_pct",
+    hardhit_against_pct: "hardhit_pct", barrels: "barrels", barrel_pct: "barrel_pct", avg_ev: "avg_ev",
+    ev_against: "avg_ev", max_ev: "max_ev", avg_la: "avg_la", gb_pct: "gb_pct", fb_pct: "fb_pct",
+    ld_pct: "ld_pct", pu_pct: "pu_pct"
+  };
+  var LEADER_DIMS = { career: true, season: true };
   var SPLIT_DIMS = {
-    batters: [["l15", "last 15 days", "15d"], ["l10", "last 10 days", "10d"], ["l5", "last 5 days", "5d"],
+    batters: [["career", "career (Statcast era, 2015 on)", "Career"], ["season", "this season", "Season"],
+      ["l15", "last 15 days", "15d"], ["l10", "last 10 days", "10d"], ["l5", "last 5 days", "5d"],
       ["vsL", "vs LHP", "vs L"], ["vsR", "vs RHP", "vs R"]],
-    pitchers: [["l15", "last 15 days", "15d"], ["l10", "last 10 days", "10d"], ["l5", "last 5 days", "5d"],
+    pitchers: [["career", "career (Statcast era, 2015 on)", "Career"], ["season", "this season", "Season"],
+      ["l15", "last 15 days", "15d"], ["l10", "last 10 days", "10d"], ["l5", "last 5 days", "5d"],
       ["vsL", "vs LHB", "vs L"], ["vsR", "vs RHB", "vs R"]]
   };
+  var DEFAULT_SPLIT_STATS = ["woba", "hh", "gb_pct", "fb_pct", "barrels"];
   var splits = { batters: loadSplits("batters"), pitchers: loadSplits("pitchers") };
 
+  /* v2 adds Career and Season and starts with wOBA, HH, GB%, FB% and
+     Barrels split five ways; stats split under v1 are kept. */
   function loadSplits(kind) {
-    var v = loadPref("splits_" + kind, null) || {};
     var valid = SPLIT_DIMS[kind].map(function (d) { return d[0]; });
-    return {
-      dims: Array.isArray(v.dims) ? v.dims.filter(function (d) { return valid.indexOf(d) !== -1; }) : ["l15", "l10", "l5"],
-      stats: Array.isArray(v.stats) ? v.stats : []
-    };
+    var v = loadPref("splits2_" + kind, null);
+    if (v) {
+      return {
+        dims: (v.dims || []).filter(function (d) { return valid.indexOf(d) !== -1; }),
+        stats: Array.isArray(v.stats) ? v.stats : []
+      };
+    }
+    var old = loadPref("splits_" + kind, null) || {};
+    var stats = DEFAULT_SPLIT_STATS.slice();
+    (old.stats || []).forEach(function (k) { if (stats.indexOf(k) === -1) stats.push(k); });
+    return { dims: ["career", "season", "l15", "l10", "l5"], stats: stats };
   }
 
   /* First and last game dates in a set of rows (ISO strings). */
@@ -132,7 +158,7 @@
   }
 
   function saveSplits(kind) {
-    savePref("splits_" + kind, splits[kind]);
+    savePref("splits2_" + kind, splits[kind]);
   }
 
   function splitKey(stat, dim) {
@@ -149,11 +175,15 @@
       var base = Catalog.stats[kind].filter(function (st) { return st.key === stat; })[0];
       if (!base) return;
       var end = state[kind].span && state[kind].span.end;
+      var lb = state.leaders[kind];
       SPLIT_DIMS[kind].forEach(function (d) {
         if (splits[kind].dims.indexOf(d[0]) === -1) return;
-        var when = WINDOW_DAYS[d[0]] && end ? " (ending " + shortDate(end) + ")" : "";
+        if (LEADER_DIMS[d[0]] && !LEADER_FIELD[stat]) return;
+        var when = WINDOW_DAYS[d[0]] && end ? " (ending " + shortDate(end) + ")" :
+          d[0] === "season" && lb ? " (" + lb.season_year + ")" : d[0] === "career" && lb ? " (" + lb.career_years + ")" : "";
+        var short = d[0] === "season" && lb ? String(lb.season_year) : d[2];
         out.push({
-          key: splitKey(stat, d[0]), label: base.label + " " + d[2], type: base.type, group: SPLITS_GROUP,
+          key: splitKey(stat, d[0]), label: base.label + " " + short, type: base.type, group: SPLITS_GROUP,
           desc: base.label + ", " + d[1] + when + (base.desc ? ": " + base.desc : ""), lower: base.lower,
           split: true, base: stat, dim: d[0]
         });
@@ -183,6 +213,10 @@
     var defs = {};
     Catalog.stats[kind].forEach(function (st) { defs[st.key] = st; });
     sp.dims.forEach(function (dim) {
+      if (LEADER_DIMS[dim]) {
+        applyLeaderSplit(kind, dim, players);
+        return;
+      }
       var lines = {};
       Stats.aggregate(rows.filter(splitRowFilter(kind, dim)), { contact: contact })
         .forEach(function (l) { lines[l.name] = l; });
@@ -194,6 +228,28 @@
           if (!line && defs[stat] && defs[stat].type === "int") v = 0;
           p[splitKey(stat, dim)] = typeof v === "number" ? v : null;
         });
+      });
+    });
+  }
+
+  function applyLeaderSplit(kind, dim, players) {
+    var lb = state.leaders[kind];
+    var table = lb && lb[dim];
+    var byName = null;
+    players.forEach(function (p) {
+      var rec = table ? table[p.id] : null;
+      if (table && !rec) {
+        if (!byName) {
+          byName = {};
+          Object.keys(table).forEach(function (id) { byName[DK.normalizeName(table[id].name)] = table[id]; });
+        }
+        rec = byName[DK.normalizeName(p.name)];
+      }
+      splits[kind].stats.forEach(function (stat) {
+        var field = LEADER_FIELD[stat];
+        if (!field) return;
+        var v = rec ? rec[field] : null;
+        p[splitKey(stat, dim)] = typeof v === "number" ? v : null;
       });
     });
   }
@@ -291,7 +347,7 @@
     try { localStorage.setItem(WEIGHTS_KEY + kind, JSON.stringify(weights[kind])); } catch (e) { /* ignore */ }
   }
 
-  var DATA_KEYS = ["batters", "pitchers", "dk", "vegas", "lookup"];
+  var DATA_KEYS = ["batters", "pitchers", "dk", "vegas", "lookup", "leaders"];
 
   function persistData(key, rows) {
     Store.set("dkmlb_" + key, rows).catch(function (e) {
@@ -319,6 +375,7 @@
         if (key === "dk") state.dk = rows;
         else if (key === "vegas") state.vegas = rows;
         else if (key === "lookup") state.lookup.entries = rows.filter(function (e) { return e && e.v === 3; });
+        else if (key === "leaders") state.leaders = { batters: rows.batters || null, pitchers: rows.pitchers || null };
         else state[key].rows = rows;
       }).catch(function () { /* unreadable entry - start empty */ });
     }));
@@ -436,6 +493,13 @@
     var kind = statsTab();
     var missing = kind ? missingColumns(kind) : {};
     var tooShort = kind ? shortWindow(kind) : null;
+    if (kind && needsLeaders(kind) && !state.leaders[kind] && !Object.keys(missing).length && !state.api &&
+        state[kind].rows.length) {
+      note.innerHTML = "<span>Career and season columns come from Baseball Savant's season leaderboards through the " +
+        "local stats server. Start it (start-server.command) and open http://localhost:8000 to fill them.</span>";
+      note.hidden = false;
+      return;
+    }
     if (kind && tooShort && !Object.keys(missing).length) {
       var span = state[kind].span;
       note.innerHTML = "<span>Your " + kind + " data covers " + span.days + " day" + (span.days === 1 ? "" : "s") + " (" +
@@ -838,13 +902,13 @@
   }
 
   /* Run a server request while showing the server's day-by-day progress. */
-  function withProgress(el, label, promise) {
+  function withProgress(el, label, promise, unit) {
     var t0 = Date.now();
     setStatus(el, label + "…", "busy");
     var timer = setInterval(function () {
       api("progress").then(function (pr) {
         var secs = Math.round((Date.now() - t0) / 1000);
-        var detail = pr.active && pr.total > 1 ? " — day " + Math.min(pr.done + 1, pr.total) + " of " + pr.total : "";
+        var detail = pr.active && pr.total > 1 ? " — " + (unit || "day") + " " + Math.min(pr.done + 1, pr.total) + " of " + pr.total : "";
         setStatus(el, label + detail + " · " + secs + "s", "busy");
       }).catch(function () { /* keep the last message */ });
     }, 800);
@@ -1528,6 +1592,62 @@
     loadList();
   }
 
+  /* ---- Career and season numbers (Savant season leaderboards) ---- */
+  var leaderLoading = {};
+  var leaderMessages = {};
+
+  /* One status line covering both tabs' career/season loads. */
+  function showLeaderStatus(kind, text, tone) {
+    leaderMessages[kind] = { text: text, tone: tone };
+    var parts = ["batters", "pitchers"].filter(function (k) { return leaderMessages[k]; });
+    var worst = parts.some(function (k) { return leaderMessages[k].tone === "error"; }) ? "error"
+      : parts.some(function (k) { return leaderMessages[k].tone === "busy"; }) ? "busy" : "ok";
+    setStatus(document.getElementById("lb-status"), parts.map(function (k) { return leaderMessages[k].text; }).join(" "), worst);
+  }
+  var restoredPromise = Promise.resolve();
+  var LEADER_LABELS = {
+    pa: "PA", woba: "wOBA", xwoba: "xwOBA", bbe: "BBE", hh: "HH", barrels: "Barrels", avg_ev: "Avg EV",
+    max_ev: "Max EV", avg_la: "Avg LA", gb_pct: "GB%", fb_pct: "FB%", ld_pct: "LD%", pu_pct: "PU%"
+  };
+
+  function needsLeaders(kind) {
+    return splits[kind].stats.some(function (st) { return LEADER_FIELD[st]; }) &&
+      splits[kind].dims.some(function (d) { return LEADER_DIMS[d]; });
+  }
+
+  function loadLeaders(kind, force) {
+    if (!state.api || !state.serverCurrent || leaderLoading[kind] || !needsLeaders(kind)) return Promise.resolve();
+    var lb = state.leaders[kind];
+    if (!force && lb && lb.fetched === isoDate(new Date())) return Promise.resolve();
+    var status = document.createElement("p");  // progress text, mirrored into the shared line
+    var mirror = setInterval(function () { if (status.textContent) showLeaderStatus(kind, status.textContent, "busy"); }, 500);
+    leaderLoading[kind] = true;
+    var role = kind === "batters" ? "batter" : "pitcher";
+    return withProgress(status, "Loading career and season numbers for " + kind + " from Savant's leaderboards",
+      api("leaders?role=" + role), "file")
+      .then(function (data) {
+        state.leaders[kind] = data;
+        persistData("leaders", state.leaders);
+        rebuild(kind);
+        var missing = data.missing.map(function (f) { return LEADER_LABELS[f] || f; });
+        showLeaderStatus(kind, "Career (" + data.career_years + ") and " + data.season_year + " season numbers loaded for " + kind + "." +
+          (missing.length ? " Savant's leaderboards didn't include " + missing.join(", ") + ", so those Career/Season columns stay blank." : "") +
+          (data.failed_count ? " " + data.failed_count + " leaderboard download" + (data.failed_count === 1 ? "" : "s") +
+            " failed, so career totals may be partial; they'll retry tomorrow." : ""),
+          missing.length || data.failed_count ? "error" : "ok");
+      }, function (e) {
+        showLeaderStatus(kind, "Career/season numbers for " + kind + " didn't load: " + e.message, "error");
+      })
+      .then(function () {
+        clearInterval(mirror);
+        leaderLoading[kind] = false;
+      });
+  }
+
+  function loadAllLeaders() {
+    return loadLeaders("batters").then(function () { return loadLeaders("pitchers"); });
+  }
+
   function detectServer() {
     /* The local server only ever serves plain http; skip the probe on
        file:// and https hosts (GitHub Pages, the artifact link). */
@@ -1538,6 +1658,7 @@
     api("health").then(function (health) {
       state.api = true;
       state.serverCurrent = (health.version || 0) >= MIN_SERVER_VERSION;
+      if (state.serverCurrent) restoredPromise.then(loadAllLeaders);
       if (!state.serverCurrent) {
         setStatus(document.getElementById("sv-status"), "The stats server is still running older code. Close its Terminal " +
           "window and double-click start-server.command again (or run ./start-server.command) so new stats come through.", "error");
@@ -1637,6 +1758,7 @@
     saveWeights(kind);
     rebuild(kind);
     renderColsPanel();
+    loadLeaders(kind);
   }
 
   function setColumns(kind, keys) {
@@ -2010,6 +2132,7 @@
       state.dk = [];
       state.vegas = [];
       state.lookup.entries = [];
+      state.leaders = { batters: null, pitchers: null };
       rebuildAll();
     });
 
@@ -2054,7 +2177,7 @@
     detectServer();
     updateSplitButtons();
     rebuildAll();
-    restoreData().then(rebuildAll);
+    restoredPromise = restoreData().then(rebuildAll);
   }
 
   function updateSplitButtons() {

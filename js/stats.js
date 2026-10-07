@@ -329,6 +329,7 @@
       var playerRows = byPlayer[name];
       var line = statLine(playerRows, opts);
       line.name = name;
+      line.id = playerRows[0].player_id || null;
       line.events = contact
         ? playerRows.filter(function (r) { return isBattedBall(r) && contact(r); })
         : playerRows;

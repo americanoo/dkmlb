@@ -12,6 +12,8 @@ Statcast data from Baseball Savant through pybaseball:
   GET /api/player?id=&role=&start=&end=   one player's pitches, any date range
   GET /api/team?team=&side=&start=&end=   a team's batting or pitching pitches
   GET /api/totals?kind=&id=|team=&side=   career + season totals (MLB Stats API)
+  GET /api/leaders?role=              career + season Statcast totals per player
+                                      (Baseball Savant season leaderboards)
   GET /api/dk/slates                  today's DraftKings MLB slates
   GET /api/dk/salaries?id=            a slate's players, as a DKSalaries.csv
 
@@ -52,13 +54,14 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Bumped whenever the site needs something new from the server; the page
 # compares it and asks for a restart when an older server is still running.
-SERVER_VERSION = 5
+SERVER_VERSION = 6
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
 DAY_CACHE = CACHE_DIR / "statcast-v3"
 OLD_DAY_CACHES = [CACHE_DIR / "statcast-v1", CACHE_DIR / "statcast-v2"]
 NAMES_FILE = CACHE_DIR / "names.json"
+LEADER_CACHE = CACHE_DIR / "leaderboards"
 
 # Columns the site reads, plus ids/game type used here for names and filters.
 SITE_COLUMNS = [
@@ -270,10 +273,11 @@ def to_payload(df, role, seed=None, detail=False):
     names = resolve_names(ids, seed)
     out = df.copy()
     out["player_name"] = out[id_col].map(lambda i: names.get(i, f"Player {i}"))
-    columns = SITE_COLUMNS
+    out["player_id"] = out[id_col]
+    columns = SITE_COLUMNS + ["player_id"]
     if detail:
         out["opp_player"] = out[opp_col].map(lambda i: names.get(i, f"Player {i}"))
-        columns = SITE_COLUMNS + DETAIL_COLUMNS + ["opp_player"]
+        columns = SITE_COLUMNS + ["player_id"] + DETAIL_COLUMNS + ["opp_player"]
     return {
         "columns": columns,
         "rows": out[columns].values.tolist(),
@@ -528,6 +532,218 @@ def load_totals(kind, key, side):
             if stat:
                 out[kind_name] = to_line(stat)
     return out
+
+
+# --------------------------------------------------------------------------
+# Career and season totals from Baseball Savant's season leaderboards
+# --------------------------------------------------------------------------
+
+STATCAST_FIRST_YEAR = 2015
+LEADER_REFRESH_HOURS = 12
+LEADERBOARDS = {
+    # pybaseball's statcast_*_expected_stats / statcast_*_exitvelo_barrels use these.
+    "expected": "/leaderboard/expected_statistics?type={role}&year={year}&position=&team=&min=1&csv=true",
+    "statcast": "/leaderboard/statcast?type={role}&year={year}&position=&team=&min=1&csv=true",
+    "battedball": "/leaderboard/batted-ball?type={role}&year={year}&min=1&csv=true",
+}
+# Savant column names vary by leaderboard and over time; the first match wins.
+LEADER_FIELDS = {
+    "expected": {"pa": ["pa"], "woba": ["woba"], "xwoba": ["est_woba", "xwoba"]},
+    "statcast": {
+        "bbe": ["attempts", "bbe", "bip"], "hh": ["ev95plus", "hard_hit", "hardhit"],
+        "barrels": ["barrels", "barrel"], "avg_ev": ["avg_hit_speed", "exit_velocity_avg"],
+        "max_ev": ["max_hit_speed", "exit_velocity_max"], "avg_la": ["avg_hit_angle", "launch_angle_avg"],
+    },
+    "battedball": {
+        "bb_bbe": ["bbe", "bip", "attempts", "n_bbe"],
+        "gb_pct": ["gb_rate", "gb_percent", "groundballs_percent", "gb_pct"],
+        "fb_pct": ["fb_rate", "fb_percent", "flyballs_percent", "fb_pct"],
+        "ld_pct": ["ld_rate", "ld_percent", "linedrives_percent", "ld_pct"],
+        "pu_pct": ["pu_rate", "pu_percent", "popups_percent", "pu_pct"],
+    },
+}
+ID_COLUMNS = ["player_id", "id", "mlbam_id", "entity_id", "batter", "pitcher"]
+NAME_COLUMNS = ["last_name, first_name", "player_name", "name", "entity_name", "name_display_last_first"]
+
+
+def leader_path(role, board, year):
+    return LEADER_CACHE / f"{role}-{board}-{year}.csv"
+
+
+def fetch_leaderboard(role, board, year):
+    """One season leaderboard as text, cached (the current season refreshes)."""
+    path = leader_path(role, board, year)
+    fresh_enough = year < current_season() or (
+        path.exists() and (dt.datetime.now().timestamp() - path.stat().st_mtime) < LEADER_REFRESH_HOURS * 3600)
+    if path.exists() and fresh_enough:
+        return path.read_text(encoding="utf-8")
+    url = "https://baseballsavant.mlb.com" + LEADERBOARDS[board].format(role=role, year=year)
+    resp = requests.get(url, timeout=60)
+    resp.raise_for_status()
+    text = resp.content.decode("utf-8-sig", errors="replace")
+    if "," not in text.split("\n", 1)[0]:
+        raise ValueError("not a CSV")
+    LEADER_CACHE.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return text
+
+
+def _first_column(df, names):
+    lower = {c.strip().lower(): c for c in df.columns}
+    for n in names:
+        if n in lower:
+            return lower[n]
+    return None
+
+
+def parse_leaderboard(text, board):
+    """{player_id: {"name": ..., field: value}} plus the fields found."""
+    df = pd.read_csv(io.StringIO(text), dtype=str, keep_default_na=False)
+    df.columns = [c.strip() for c in df.columns]
+    id_col = _first_column(df, ID_COLUMNS)
+    if id_col is None:
+        return {}, set()
+    name_col = _first_column(df, NAME_COLUMNS)
+    last_col, first_col = _first_column(df, ["last_name"]), _first_column(df, ["first_name"])
+    found = {}
+    for field, names in LEADER_FIELDS[board].items():
+        col = _first_column(df, names)
+        if col is not None:
+            found[field] = col
+    # Rates may be fractions (0.45) or percents (45.0); store percents.
+    as_fraction = {}
+    for field, col in found.items():
+        if field.endswith("_pct"):
+            vals = pd.to_numeric(df[col], errors="coerce").dropna()
+            as_fraction[field] = len(vals) > 0 and vals.max() <= 1.0
+    out = {}
+    for _, row in df.iterrows():
+        pid = _int_str(row[id_col])
+        if not pid:
+            continue
+        if name_col:
+            name = row[name_col].strip()
+        elif last_col and first_col:
+            name = f"{row[last_col].strip()}, {row[first_col].strip()}"
+        else:
+            name = ""
+        rec = {"name": name}
+        for field, col in found.items():
+            v = _f(row[col])
+            if v is not None and as_fraction.get(field):
+                v *= 100
+            rec[field] = v
+        out[pid] = rec
+    return out, set(found)
+
+
+def load_leaders(role):
+    """Season (current year) and career (2015 on) lines per player id."""
+    season_year = current_season()
+    years = list(range(STATCAST_FIRST_YEAR, season_year + 1))
+    jobs = [(board, y) for board in LEADERBOARDS for y in years]
+    set_progress(active=True, done=0, total=len(jobs), label="Loading Savant leaderboards")
+    tables, failed, found_fields = {}, [], set()
+
+    def work(job):
+        board, y = job
+        return job, parse_leaderboard(fetch_leaderboard(role, board, y), board)
+
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+        futures = [pool.submit(work, j) for j in jobs]
+        for fut in as_completed(futures):
+            try:
+                (board, y), (table, fields) = fut.result()
+                tables[(board, y)] = table
+                found_fields |= fields
+            except Exception as exc:
+                failed.append(str(exc)[:120])
+            bump_progress()
+
+    def line_for(year_list):
+        acc = {}
+        for y in year_list:
+            for board in LEADERBOARDS:
+                for pid, rec in (tables.get((board, y)) or {}).items():
+                    a = acc.setdefault(pid, {"name": rec.get("name", ""), "pa": 0, "woba_num": 0, "xwoba_num": 0,
+                                             "woba_pa": 0, "xwoba_pa": 0, "bbe": 0, "hh": 0, "barrels": 0,
+                                             "ev_num": 0, "ev_bbe": 0, "la_num": 0, "la_bbe": 0, "max_ev": None,
+                                             "bb_bbe": 0, "gb": 0, "fb": 0, "ld": 0, "pu": 0, "mix_bbe": 0,
+                                             "has": set()})
+                    if rec.get("name") and not a["name"]:
+                        a["name"] = rec["name"]
+                    if board == "expected" and rec.get("pa"):
+                        a["pa"] += rec["pa"]
+                        a["has"].add("pa")
+                        for k in ("woba", "xwoba"):
+                            if rec.get(k) is not None:
+                                a[k + "_num"] += rec[k] * rec["pa"]
+                                a[k + "_pa"] += rec["pa"]
+                                a["has"].add(k)
+                    if board == "statcast":
+                        n = rec.get("bbe") or 0
+                        for k in ("bbe", "hh", "barrels"):
+                            if rec.get(k) is not None:
+                                a[k] += rec[k]
+                                a["has"].add(k)
+                        if rec.get("avg_ev") is not None and n:
+                            a["ev_num"] += rec["avg_ev"] * n
+                            a["ev_bbe"] += n
+                        if rec.get("avg_la") is not None and n:
+                            a["la_num"] += rec["avg_la"] * n
+                            a["la_bbe"] += n
+                        if rec.get("max_ev") is not None:
+                            a["max_ev"] = max(a["max_ev"] or 0, rec["max_ev"])
+                    if board == "battedball":
+                        # Weight rates by balls in play; fall back to the exit-velo board's count.
+                        n = rec.get("bb_bbe") or ((tables.get(("statcast", y)) or {}).get(pid) or {}).get("bbe")
+                        if n:
+                            a["mix_bbe"] += n
+                            for k in ("gb", "fb", "ld", "pu"):
+                                if rec.get(k + "_pct") is not None:
+                                    a[k] += rec[k + "_pct"] * n / 100
+                                    a["has"].add(k + "_pct")
+        out = {}
+        for pid, a in acc.items():
+            line = {"name": a["name"]}
+            if "pa" in a["has"]:
+                line["pa"] = a["pa"]
+            for k in ("woba", "xwoba"):
+                if k in a["has"] and a[k + "_pa"]:
+                    line[k] = a[k + "_num"] / a[k + "_pa"]
+            for k in ("bbe", "hh", "barrels"):
+                if k in a["has"]:
+                    line[k] = a[k]
+            if a["bbe"]:
+                if "hh" in a["has"]:
+                    line["hardhit_pct"] = a["hh"] / a["bbe"] * 100
+                if "barrels" in a["has"]:
+                    line["barrel_pct"] = a["barrels"] / a["bbe"] * 100
+            if a["ev_bbe"]:
+                line["avg_ev"] = a["ev_num"] / a["ev_bbe"]
+            if a["la_bbe"]:
+                line["avg_la"] = a["la_num"] / a["la_bbe"]
+            if a["max_ev"] is not None:
+                line["max_ev"] = a["max_ev"]
+            for k in ("gb", "fb", "ld", "pu"):
+                if k + "_pct" in a["has"] and a["mix_bbe"]:
+                    line[k + "_pct"] = a[k] / a["mix_bbe"] * 100
+            out[pid] = line
+        return out
+
+    wanted = {"pa", "woba", "xwoba", "bbe", "hh", "barrels", "avg_ev", "max_ev", "avg_la",
+              "gb_pct", "fb_pct", "ld_pct", "pu_pct"}
+    return {
+        "role": role,
+        "season_year": season_year,
+        "career_years": f"{years[0]}–{years[-1]}",
+        "season": line_for([season_year]),
+        "career": line_for(years),
+        "missing": sorted(wanted - found_fields),
+        "failed": failed[:5],
+        "failed_count": len(failed),
+        "fetched": dt.date.today().isoformat(),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -967,6 +1183,17 @@ class Handler(SimpleHTTPRequestHandler):
                     if not key.isdigit():
                         raise ApiError(400, "Pick a player from the search results first.")
                 self.send_json(200, load_totals(kind, key, side))
+            elif path == "/api/leaders":
+                role = parse_role(qs)
+                with fetch_lock:
+                    try:
+                        data = load_leaders(role)
+                    finally:
+                        set_progress(active=False)
+                if not data["season"] and not data["career"]:
+                    raise ApiError(502, "Baseball Savant's leaderboards didn't load (" +
+                                   "; ".join(data["failed"][:2]) + "). Try again in a minute.")
+                self.send_json(200, data)
             elif path == "/api/dk/slates":
                 self.send_json(200, dk_slates(include_all=flag(qs, "all", default=False)))
             elif path == "/api/dk/salaries":

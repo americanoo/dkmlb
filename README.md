@@ -119,8 +119,24 @@ lacks them, those headers are marked ⚠ and a notice above the table offers
 **Re-pull now**. If the page says the stats server is running older code,
 close its Terminal window and start it again so updates take effect.
 
-**Split columns** give a stat its own columns for the **last 15, 10 and 5
-days** (and optionally vs L / vs R), e.g. HH 15d, HH 10d, HH 5d beside HH.
+**Split columns** give a stat its own columns for **Career, this season,
+and the last 15, 10 and 5 days** (and optionally vs L / vs R). wOBA, HH, GB%,
+FB% and Barrels start split all five ways, e.g. HH Career · HH 2026 · HH 15d ·
+HH 10d · HH 5d.
+
+Career (Statcast era, 2015 on) and season numbers come from Baseball Savant's
+season leaderboards (expected stats, exit velocity & barrels, batted ball),
+loaded by the stats server: one small file per season per leaderboard, past
+seasons saved permanently, the current season refreshed twice a day, and
+loaded automatically once a day. Career wOBA/xwOBA are PA-weighted across
+seasons; HH and Barrels are summed; GB%/FB%/LD%/PU% are weighted by balls in
+play. Players are matched by Savant player ID (name as a fallback). Stats
+available this way: PA, wOBA, xwOBA, BBE, HH, HardHit%, Barrels, Barrel%,
+Avg/Max EV, Avg LA, GB%, FB%, LD%, PU%. If Savant leaves a stat out of its
+leaderboards, the status line says so and those columns stay blank (⚠).
+Season leaderboards cover the regular season; Savant's barrel and hard-hit
+counts are its official ones, while the day windows use this site's
+calculations from pitch data.
 Pick stats to split in the panel (or split every stat shown). Day windows
 count back from the most recent game in the loaded data, so pull at least
 15 days (the batter pull now defaults to 15; a notice appears when the data
