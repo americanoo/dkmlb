@@ -674,22 +674,25 @@ NON_CLASSIC_WORDS = ("showdown", "single game", "tiers", "snake", "best ball", "
 
 
 def slate_game_type(details, contests, games):
-    """Classic, Showdown, Tiers... from the slate details, else from its
-    contests' game type or names; a one-game slate is never Classic."""
+    """(type, how it was decided): from the slate details, else its contests'
+    game type, else contest names; a one-game slate is never Classic."""
     game_type = (details.get("contestType") or {}).get("gameType")
     if game_type:
-        return game_type
+        return game_type, "slate details"
     types = [c.get("gameType") for c in contests if c.get("gameType")]
     if types:
-        return max(set(types), key=types.count)
+        return max(set(types), key=types.count), "contest game types"
     flagged = sum(1 for c in contests if any(w in str(c.get("n") or "").lower() for w in NON_CLASSIC_WORDS))
-    if games == 1 or (contests and flagged * 2 > len(contests)):
-        return "Not classic"
-    return "Classic"
+    if games == 1:
+        return "Single game", "game count"
+    if contests and flagged * 2 > len(contests):
+        return "Not classic", "contest names"
+    return "Classic", "contest names"
 
 
-def dk_slates():
-    """Today's MLB Classic slates."""
+def dk_slates(include_all=False):
+    """MLB Classic slates DraftKings lists now, plus a count of the others
+    (or every slate, with how its type was decided, when include_all)."""
     data = dk_get(f"{DK_WWW}/lobby/getcontests", {"sport": "MLB"})
     groups = [g for g in data.get("DraftGroups") or []
               if g.get("DraftGroupId") and str(g.get("Sport", "MLB")).upper() == "MLB"]
@@ -699,14 +702,18 @@ def dk_slates():
     with ThreadPoolExecutor(max_workers=6) as pool:
         details = dict(zip([g["DraftGroupId"] for g in groups],
                            pool.map(_slate_details, [g["DraftGroupId"] for g in groups])))
-    slates = []
+    slates, others = [], {}
     for g in groups:
         gid = g["DraftGroupId"]
         det = details.get(gid) or {}
         contests = contests_by_group.get(gid, [])
         games = g.get("GameCount") or len(det.get("games") or [])
-        if slate_game_type(det, contests, games).strip().lower() != "classic":
-            continue
+        game_type, decided_by = slate_game_type(det, contests, games)
+        is_classic = game_type.strip().lower() == "classic"
+        if not is_classic:
+            others[game_type] = others.get(game_type, 0) + 1
+            if not include_all:
+                continue
         start = parse_dk_time(det.get("minStartTime") or g.get("StartDateEst") or g.get("StartDate"))
         local, zone = eastern(start)
         suffix = (g.get("ContestStartTimeSuffix") or "").strip().strip("()").strip()
@@ -718,15 +725,18 @@ def dk_slates():
         slates.append({
             "id": gid,
             "label": " · ".join(parts),
-            "game_type": "Classic",
+            "game_type": game_type,
             "games": games,
             "start": start.isoformat() if start else None,
             "contests": len(contests),
             "contest_type_id": g.get("ContestTypeId"),
             "main": suffix.lower() == "main",
         })
+        if include_all:
+            slates[-1].update(classic=is_classic, type_decided_by=decided_by,
+                              contest_names=[c.get("n") for c in contests[:5]])
     slates.sort(key=lambda sl: (sl["start"] or "", -(sl["games"] or 0)))
-    return slates
+    return {"slates": slates, "total": len(groups), "other_types": others}
 
 
 def _salaries_from_draftables(group_id):
@@ -941,7 +951,7 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ApiError(400, "Pick a player from the search results first.")
                 self.send_json(200, load_totals(kind, key, side))
             elif path == "/api/dk/slates":
-                self.send_json(200, {"slates": dk_slates()})
+                self.send_json(200, dk_slates(include_all=flag(qs, "all", default=False)))
             elif path == "/api/dk/salaries":
                 group_id = (qs.get("id") or [""])[0]
                 if not group_id.isdigit():

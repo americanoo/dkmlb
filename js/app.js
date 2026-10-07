@@ -1229,9 +1229,17 @@
       api("dk/slates").then(function (res) {
         slates = res.slates || [];
         if (!slates.length) {
-          sel.innerHTML = '<option value="">No MLB Classic slates open on DraftKings right now</option>';
+          var others = res.other_types || {};
+          var otherText = Object.keys(others).map(function (t) { return others[t] + " " + t; }).join(", ");
+          sel.innerHTML = '<option value="">No Classic slate posted yet</option>';
+          setStatus(status, res.total
+            ? "DraftKings lists " + res.total + " MLB slate" + (res.total === 1 ? "" : "s") + " right now, but none are Classic (" +
+              otherText + "). The next Classic slate usually appears the day before, once game times are set — click Refresh list later."
+            : "DraftKings hasn't posted any MLB slates yet. Slates usually appear the day before, once game times are set — " +
+              "click Refresh list later.", "");
           return;
         }
+        setStatus(status, "", "");
         var saved = String(loadPref("dkSlate", ""));
         var classic = slates.filter(function (sl) { return /classic/i.test(sl.game_type); })
           .sort(function (a, b) { return (b.games || 0) - (a.games || 0); });

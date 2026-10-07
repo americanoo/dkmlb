@@ -48,7 +48,10 @@ and player list from the same public pages DraftKings' own lobby and lineup
 builder use (no login), and rebuilds them in the exact DKSalaries.csv
 layout, so matching, Value and "Build matchups from DK slate" work just as
 with an upload. The biggest slate is preselected, and your last choice is
-remembered. These pages aren't an official API. The server
+remembered. If no Classic slate shows, the panel says whether DraftKings
+has posted no MLB slates yet or only non-Classic ones. To see every slate
+DraftKings lists and how each was classified, open
+http://localhost:8000/api/dk/slates?all=1. These pages aren't an official API. The server
 first sends a plain request, then a browser-style one, and if DraftKings'
 player API still refuses, it downloads the slate's own "Export to CSV" file
 instead. If every route is refused, the message names which ones and why;
