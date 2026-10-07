@@ -49,6 +49,13 @@
         <button id="sv-pull" class="upload-btn as-button">Pull data</button>
       </div>
       <p id="sv-status" class="sv-status" role="status"></p>
+      <div class="savant-row dk-row">
+        <span class="savant-title">DraftKings slate</span>
+        <select id="dk-slate" aria-label="DraftKings slate"><option value="">Loading today's slates…</option></select>
+        <button type="button" id="dk-refresh" class="ghost-btn" title="Reload today's slate list">Refresh list</button>
+        <button type="button" id="dk-load" class="upload-btn as-button">Load salaries</button>
+      </div>
+      <p id="dk-status" class="sv-status" role="status"></p>
     </section>
     <p id="savant-offline" class="hint" hidden>To pull stats straight from Baseball Savant, start the local
       stats server (double-click <code>start-server.command</code>) and open http://localhost:8000.</p>

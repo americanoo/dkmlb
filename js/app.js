@@ -1214,6 +1214,64 @@
     });
   }
 
+  /* ---- DraftKings slates: the server turns DK's slate data into the same
+     DKSalaries.csv layout the upload button reads. ---- */
+  function initDkSlates() {
+    var sel = document.getElementById("dk-slate");
+    var status = document.getElementById("dk-status");
+    var loadBtn = document.getElementById("dk-load");
+    var slates = [];
+
+    function loadList() {
+      sel.disabled = true;
+      loadBtn.disabled = true;
+      sel.innerHTML = '<option value="">Loading today\'s slates…</option>';
+      api("dk/slates").then(function (res) {
+        slates = res.slates || [];
+        if (!slates.length) {
+          sel.innerHTML = '<option value="">No MLB slates open on DraftKings right now</option>';
+          return;
+        }
+        var saved = String(loadPref("dkSlate", ""));
+        var classic = slates.filter(function (sl) { return /classic/i.test(sl.game_type); })
+          .sort(function (a, b) { return (b.games || 0) - (a.games || 0); });
+        var pick = slates.filter(function (sl) { return String(sl.id) === saved; })[0] ||
+          slates.filter(function (sl) { return sl.main; })[0] || classic[0] || slates[0];
+        sel.innerHTML = slates.map(function (sl) {
+          return '<option value="' + sl.id + '">' + esc(sl.label) + "</option>";
+        }).join("");
+        sel.value = String(pick.id);
+        sel.disabled = false;
+        loadBtn.disabled = false;
+      }, function (e) {
+        sel.innerHTML = '<option value="">Couldn\'t load slates</option>';
+        setStatus(status, e.message + " You can still upload the salary CSV.", "error");
+      });
+    }
+
+    loadBtn.addEventListener("click", function () {
+      var id = sel.value;
+      if (!id) return;
+      var slate = slates.filter(function (sl) { return String(sl.id) === id; })[0];
+      var label = slate ? slate.label : "the slate";
+      loadBtn.disabled = true;
+      setStatus(status, "Loading salaries for " + label + " from DraftKings…", "busy");
+      api("dk/salaries?id=" + id).then(function (res) {
+        var players = DK.parseSalaries(res.csv);
+        if (!players.length) throw new Error("DraftKings' player list came back empty. Try another slate or upload the CSV.");
+        state.dk = players;
+        persistData("dk", state.dk);
+        savePref("dkSlate", id);
+        rebuildAll();
+        setStatus(status, "Loaded " + players.length + " players from " + label + ".", "ok");
+      }).catch(function (e) {
+        setStatus(status, e.message, "error");
+      }).then(function () { loadBtn.disabled = false; });
+    });
+    document.getElementById("dk-refresh").addEventListener("click", loadList);
+    loadList();
+  }
+
   function detectServer() {
     /* The local server only ever serves plain http; skip the probe on
        file:// and https hosts (GitHub Pages, the artifact link). */
@@ -1224,6 +1282,7 @@
     api("health").then(function () {
       state.api = true;
       document.getElementById("savant-panel").hidden = false;
+      initDkSlates();
       if (state.tab === "lookup") renderLookup();
     }, function () {
       document.getElementById("savant-offline").hidden = false;

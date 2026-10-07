@@ -12,6 +12,8 @@ Statcast data from Baseball Savant through pybaseball:
   GET /api/player?id=&role=&start=&end=   one player's pitches, any date range
   GET /api/team?team=&side=&start=&end=   a team's batting or pitching pitches
   GET /api/totals?kind=&id=|team=&side=   career + season totals (MLB Stats API)
+  GET /api/dk/slates                  today's DraftKings MLB slates
+  GET /api/dk/salaries?id=            a slate's players, as a DKSalaries.csv
 
 League pulls are cached per day under server/cache/, so a repeat or
 overlapping date range only downloads the days it hasn't seen.
@@ -22,7 +24,9 @@ Run:  python3 server/server.py            (add --lan to reach it from a phone
 """
 
 import argparse
+import csv
 import datetime as dt
+import io
 import json
 import shutil
 import socket
@@ -521,6 +525,176 @@ def load_totals(kind, key, side):
 
 
 # --------------------------------------------------------------------------
+# DraftKings slates and salaries (the public endpoints DraftKings' own
+# lobby and lineup pages use; no login)
+# --------------------------------------------------------------------------
+
+DK_WWW = "https://www.draftkings.com"
+DK_API = "https://api.draftkings.com"
+DK_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+              "Accept": "application/json"}
+DK_CSV_HEADER = ["Position", "Name + ID", "Name", "ID", "Roster Position", "Salary",
+                 "Game Info", "TeamAbbrev", "AvgPointsPerGame"]
+PITCHER_POSITIONS = {"SP", "RP", "P"}
+ROSTER_SLOT_ORDER = ["P", "C", "1B", "2B", "3B", "SS", "OF", "UTIL", "CPT", "FLEX"]
+
+
+def roster_position(position):
+    """DK's CSV lists eligible slots in lineup order: "1B/C" -> "C/1B"."""
+    if position in PITCHER_POSITIONS:
+        return "P"
+    slots = [x for x in position.split("/") if x]
+    rank = {slot: i for i, slot in enumerate(ROSTER_SLOT_ORDER)}
+    return "/".join(sorted(slots, key=lambda x: rank.get(x, len(rank))))
+
+try:
+    from zoneinfo import ZoneInfo
+    EASTERN = ZoneInfo("America/New_York")
+except Exception:  # no tz database (some Windows installs): times show in UTC
+    EASTERN = None
+
+
+def dk_get(url, params=None):
+    try:
+        resp = requests.get(url, params=params, headers=DK_HEADERS, timeout=20)
+    except requests.RequestException:
+        raise ApiError(502, "DraftKings couldn't be reached. Check your connection and try again.")
+    if resp.status_code >= 400:
+        raise ApiError(502, f"DraftKings returned an error ({resp.status_code}). Try again in a minute, "
+                            "or upload the salary CSV instead.")
+    try:
+        return resp.json()
+    except ValueError:
+        raise ApiError(502, "DraftKings sent an unreadable response. Upload the salary CSV instead.")
+
+
+def parse_dk_time(value):
+    """DraftKings sends ISO times ("2026-10-07T23:08:00.0000000Z") or "/Date(ms)/"."""
+    if not value:
+        return None
+    text = str(value)
+    if text.startswith("/Date("):
+        try:
+            ms = int(text[6:].split(")")[0].split("-")[0].split("+")[0])
+            return dt.datetime.fromtimestamp(ms / 1000, tz=dt.timezone.utc)
+        except ValueError:
+            return None
+    text = text.replace("Z", "+00:00")
+    if "." in text:  # trim 7-digit fractions that fromisoformat rejects on older Pythons
+        head, _, tail = text.partition(".")
+        frac = "".join(ch for ch in tail if ch.isdigit())
+        zone = tail[len(frac):]
+        text = f"{head}.{frac[:6]}{zone}"
+    try:
+        stamp = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=dt.timezone.utc)
+
+
+def eastern(stamp):
+    if stamp is None:
+        return None, ""
+    if EASTERN is not None:
+        return stamp.astimezone(EASTERN), "ET"
+    return stamp.astimezone(dt.timezone.utc), "UTC"
+
+
+def game_info(name, start):
+    """DK CSV style: "MIL@SD 08/10/2026 09:40PM ET"."""
+    matchup = "@".join(part.strip() for part in (name or "").split("@"))
+    local, zone = eastern(start)
+    when = f" {local.strftime('%m/%d/%Y %I:%M%p')} {zone}" if local else ""
+    return (matchup + when).strip()
+
+
+def _slate_details(group_id):
+    try:
+        return dk_get(f"{DK_API}/draftgroups/v1/{group_id}").get("draftGroup") or {}
+    except ApiError:
+        return {}
+
+
+def dk_slates():
+    data = dk_get(f"{DK_WWW}/lobby/getcontests", {"sport": "MLB"})
+    groups = [g for g in data.get("DraftGroups") or []
+              if g.get("DraftGroupId") and str(g.get("Sport", "MLB")).upper() == "MLB"]
+    contest_counts = {}
+    for c in data.get("Contests") or []:
+        contest_counts[c.get("dg")] = contest_counts.get(c.get("dg"), 0) + 1
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        details = dict(zip([g["DraftGroupId"] for g in groups],
+                           pool.map(_slate_details, [g["DraftGroupId"] for g in groups])))
+    slates = []
+    for g in groups:
+        gid = g["DraftGroupId"]
+        det = details.get(gid) or {}
+        game_type = ((det.get("contestType") or {}).get("gameType")) or ""
+        start = parse_dk_time(det.get("minStartTime") or g.get("StartDateEst") or g.get("StartDate"))
+        local, zone = eastern(start)
+        games = g.get("GameCount") or len(det.get("games") or [])
+        suffix = (g.get("ContestStartTimeSuffix") or "").strip().strip("()").strip()
+        parts = [game_type or "Slate", f"{games} game{'s' if games != 1 else ''}"]
+        if local:
+            parts.append(local.strftime("%a %-I:%M %p" if sys.platform != "win32" else "%a %#I:%M %p") + f" {zone}")
+        if suffix:
+            parts.append(suffix)
+        slates.append({
+            "id": gid,
+            "label": " · ".join(parts),
+            "game_type": game_type,
+            "games": games,
+            "start": start.isoformat() if start else None,
+            "contests": contest_counts.get(gid, 0),
+            "main": suffix.lower() == "main",
+        })
+    slates.sort(key=lambda sl: (sl["start"] or "", -(sl["games"] or 0)))
+    return slates
+
+
+def dk_salaries_csv(group_id):
+    data = dk_get(f"{DK_API}/draftgroups/v1/draftgroups/{group_id}/draftables")
+    competitions = {c.get("competitionId"): c for c in data.get("competitions") or []}
+    try:
+        listing = dk_get(f"{DK_WWW}/lineup/getavailableplayers", {"draftGroupId": group_id})
+        ppg = {p.get("pid"): p.get("ppg") for p in listing.get("playerList") or []}
+    except ApiError:
+        ppg = {}  # DK Avg is a nice-to-have; salaries still load
+
+    # Showdown lists each player twice (captain at 1.5x salary, flex):
+    # keep the flex entry so salaries match the classic scale.
+    best = {}
+    for p in data.get("draftables") or []:
+        key = p.get("playerId") or p.get("draftableId")
+        if key is None or p.get("salary") is None:
+            continue
+        if key not in best or p["salary"] < best[key]["salary"]:
+            best[key] = p
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(DK_CSV_HEADER)
+    for p in sorted(best.values(), key=lambda x: (-x["salary"], x.get("displayName") or "")):
+        comp = p.get("competition") or competitions.get((p.get("competition") or {}).get("competitionId")) or {}
+        position = p.get("position") or ""
+        name = p.get("displayName") or " ".join(filter(None, [p.get("firstName"), p.get("lastName")]))
+        draftable_id = p.get("draftableId")
+        writer.writerow([
+            position,
+            f"{name} ({draftable_id})",
+            name,
+            draftable_id,
+            roster_position(position),
+            int(p["salary"]),
+            game_info(comp.get("name"), parse_dk_time(comp.get("startTime"))),
+            p.get("teamAbbreviation") or "",
+            ppg.get(p.get("playerId")) or "",
+        ])
+    return out.getvalue(), len(best)
+
+
+# --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
 
@@ -652,6 +826,17 @@ class Handler(SimpleHTTPRequestHandler):
                     if not key.isdigit():
                         raise ApiError(400, "Pick a player from the search results first.")
                 self.send_json(200, load_totals(kind, key, side))
+            elif path == "/api/dk/slates":
+                self.send_json(200, {"slates": dk_slates()})
+            elif path == "/api/dk/salaries":
+                group_id = (qs.get("id") or [""])[0]
+                if not group_id.isdigit():
+                    raise ApiError(400, "Pick a slate first.")
+                text, count = dk_salaries_csv(int(group_id))
+                if not count:
+                    raise ApiError(502, "DraftKings returned no players for that slate. It may have locked or "
+                                        "been removed; refresh the slate list.")
+                self.send_json(200, {"csv": text, "count": count, "id": int(group_id)})
             elif path == "/api/team":
                 team = (qs.get("team") or [""])[0].upper()
                 if team not in TEAMS:
