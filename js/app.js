@@ -192,7 +192,7 @@
         if (rows === undefined) return;
         if (key === "dk") state.dk = rows;
         else if (key === "vegas") state.vegas = rows;
-        else if (key === "lookup") state.lookup.entries = rows.filter(function (e) { return e && e.kind; });
+        else if (key === "lookup") state.lookup.entries = rows.filter(function (e) { return e && e.v === 3; });
         else state[key].rows = rows;
       }).catch(function () { /* unreadable entry - start empty */ });
     }));
@@ -627,6 +627,12 @@
     pitEnd.value = today;
     post.checked = loadPref("svPost", true);
     [batStart, batEnd, pitStart, pitEnd].forEach(function (i) { i.max = today; });
+    document.querySelectorAll("[data-bat-days]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        batStart.value = daysAgo(+btn.getAttribute("data-bat-days") - 1);
+        batEnd.value = today;
+      });
+    });
 
     document.getElementById("sv-pull").addEventListener("click", function () {
       var btn = this;
@@ -668,7 +674,9 @@
     });
   }
 
-  /* ---- Lookup tab: player or team, any date range, instant filters ---- */
+  /* ---- Lookup tab: player or team. Career and season come from MLB's
+     official totals; Statcast detail covers only the last 15 days, split
+     into 15/10/5-day windows, so nothing season-long is downloaded. ---- */
 
   var TEAM_NAMES = {
     ATH: "Athletics", ATL: "Atlanta Braves", AZ: "Arizona Diamondbacks", BAL: "Baltimore Orioles",
@@ -713,13 +721,16 @@
 
   var LK_RESULTS_BAT = [
     { key: "pitches", label: "Pitches", type: "int" }, { key: "pa", label: "PA", type: "int" },
-    { key: "avg", label: "AVG", type: "avg3" }, { key: "slg", label: "SLG", type: "avg3" },
+    { key: "avg", label: "AVG", type: "avg3" }, { key: "obp", label: "OBP", type: "avg3" },
+    { key: "slg", label: "SLG", type: "avg3" }, { key: "ops", label: "OPS", type: "avg3" },
     { key: "woba", label: "wOBA", type: "avg3" }, { key: "xwoba", label: "xwOBA", type: "avg3" },
     { key: "k_pct", label: "K%", type: "pct" }, { key: "bb_pct", label: "BB%", type: "pct" },
     { key: "whiff_pct", label: "Whiff%", type: "pct" }, { key: "chase_pct", label: "Chase%", type: "pct" }
   ];
   var LK_RESULTS_PIT = [
     { key: "pitches", label: "Pitches", type: "int" }, { key: "pa", label: "BF", type: "int" },
+    { key: "ip", label: "IP", type: "text" }, { key: "era", label: "ERA", type: "num2" },
+    { key: "whip", label: "WHIP", type: "num2" },
     { key: "k_pct", label: "K%", type: "pct" }, { key: "bb_pct", label: "BB%", type: "pct" },
     { key: "whiff_pct", label: "Whiff%", type: "pct" }, { key: "csw_pct", label: "CSW%", type: "pct" },
     { key: "chase_pct", label: "Chase%", type: "pct" }, { key: "avg", label: "AVG", type: "avg3" },
@@ -741,6 +752,21 @@
     { key: "hits", label: "Hits", type: "int" }
   ];
   var HISTORY_LIMIT = 400;
+  var LOOKUP_DAYS = 15;
+  var WINDOWS = [15, 10, 5];
+  var ENTRY_VERSION = 3;
+
+  /* First date inside an N-day window ending on `end` (both ISO dates). */
+  function windowStart(end, days) {
+    var d = new Date(end + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - (days - 1));
+    return d.toISOString().slice(0, 10);
+  }
+
+  function windowRows(entry, days) {
+    var from = windowStart(entry.end, days);
+    return entry.rows.filter(function (r) { return r.game_date >= from; });
+  }
 
   function lkFilters() {
     return state.lookup.filters;
@@ -864,7 +890,8 @@
 
   function statCells(line, cols) {
     return cols.results.concat(cols.contact).map(function (c) {
-      return '<td class="n">' + esc(fmt(line[c.key], c.type)) + "</td>";
+      var v = line ? line[c.key] : null;
+      return '<td class="n">' + esc(fmt(v === undefined ? null : v, c.type)) + "</td>";
     }).join("");
   }
 
@@ -914,7 +941,7 @@
   }
 
   /* A team row expands into each player's line, sortable by any column. */
-  function teamBreakdownHTML(entry, rows, cols) {
+  function teamBreakdownHTML(prefix, side, rows, cols) {
     var byName = {};
     rows.forEach(function (r) { (byName[r.player_name] = byName[r.player_name] || []).push(r); });
     var contact = contactFilter();
@@ -934,18 +961,18 @@
     });
     var all = cols.results.concat(cols.contact);
     var html = '<div class="breakdown"><table class="data-grid"><thead>' + groupHeader(cols, 1, 0) + "<tr>" +
-      '<th data-sort="name">' + (entry.side === "batting" ? "Batter" : "Pitcher") + (sort.key === "name" ? (sort.dir < 0 ? " ▼" : " ▲") : "") + "</th>" +
+      '<th data-sort="name">' + (side === "batting" ? "Batter" : "Pitcher") + (sort.key === "name" ? (sort.dir < 0 ? " ▼" : " ▲") : "") + "</th>" +
       all.map(function (c) {
         return '<th data-sort="' + c.key + '">' + esc(c.label) + (sort.key === c.key ? (sort.dir < 0 ? " ▼" : " ▲") : "") + "</th>";
       }).join("") + "</tr></thead><tbody>";
     players.forEach(function (p) {
-      var key = entry.key + "|" + p.name;
+      var key = prefix + "|" + p.name;
       var open = state.lookup.expanded[key];
       html += '<tr class="player-row sub' + (open ? " open" : "") + '" data-key="' + esc(key) + '">' +
         '<td class="t name-cell"><span class="caret">' + (open ? "▾" : "▸") + "</span>" + esc(p.name) + "</td>" +
         statCells(p, cols) + "</tr>";
       if (open) {
-        html += '<tr class="history-row"><td colspan="' + (all.length + 1) + '">' + lookupHistoryHTML(p.rows, entry.side) + "</td></tr>";
+        html += '<tr class="history-row"><td colspan="' + (all.length + 1) + '">' + lookupHistoryHTML(p.rows, side) + "</td></tr>";
       }
     });
     return html + "</tbody></table></div>";
@@ -959,8 +986,9 @@
     var html = "";
     if (entries.length) {
       html += '<p class="filter-summary">' + (summary.length
-        ? "<b>Filtered:</b> " + summary.map(esc).join(" · ")
-        : "No filters — showing every pitch in each date range.") + "</p>";
+        ? "<b>Filtered:</b> " + summary.map(esc).join(" · ") + ". Filters apply to the last 15/10/5-day rows; " +
+          "career and season are MLB's official totals."
+        : "No filters. Career and season are MLB's official totals; the day rows are Statcast.") + "</p>";
     }
     ["batting", "pitching"].forEach(function (side) {
       var list = entries.filter(function (e) { return e.side === side; });
@@ -968,32 +996,54 @@
       var cols = lookupCols(side);
       var situation = situationFilter(side);
       var contact = contactFilter();
-      var span = cols.results.length + cols.contact.length + 4;
+      var span = cols.results.length + cols.contact.length + 2;
       html += '<h2 class="lookup-head">' + (side === "batting" ? "Batting" : "Pitching") + "</h2>";
-      html += '<div class="table-wrap"><table class="data-grid lookup-table"><thead>' + groupHeader(cols, 3, 1) +
-        "<tr><th>Name</th><th>Type</th><th>Dates</th>" +
+      html += '<div class="table-wrap"><table class="data-grid lookup-table"><thead>' + groupHeader(cols, 1, 1) +
+        "<tr><th>Window</th>" +
         cols.results.concat(cols.contact).map(function (c) { return "<th>" + esc(c.label) + "</th>"; }).join("") +
-        "<th></th></tr></thead><tbody>";
+        "<th></th></tr></thead>";
       list.forEach(function (e) {
-        var rows = e.rows.filter(situation);
-        var line = Stats.statLine(rows, { contact: contact });
-        var open = state.lookup.expanded[e.key];
-        html += '<tr class="player-row' + (open ? " open" : "") + '" data-key="' + esc(e.key) + '">' +
-          '<td class="t name-cell"><span class="caret">' + (open ? "▾" : "▸") + "</span>" + esc(entryLabel(e)) + "</td>" +
-          '<td class="t"><span class="chip' + (e.kind === "team" ? " team" : "") + '">' + (e.kind === "team" ? "Team" : "Player") + "</span></td>" +
-          '<td class="t dates">' + esc(shortDate(e.start) + " – " + shortDate(e.end)) + "</td>" +
-          statCells(line, cols) +
+        html += "<tbody class=\"entry\">";
+        html += '<tr class="entry-row"><td colspan="' + (span - 1) + '"><span class="entry-name">' + esc(entryLabel(e)) + "</span>" +
+          '<span class="chip' + (e.kind === "team" ? " team" : "") + '">' + (e.kind === "team" ? "Team " + e.side : (side === "batting" ? "Batter" : "Pitcher")) + "</span>" +
+          '<span class="muted entry-note">Statcast through ' + esc(shortDate(e.end)) + "</span></td>" +
           '<td><button class="ghost-btn del-row" data-remove="' + esc(e.key) + '" title="Remove">✕</button></td></tr>';
-        if (open) {
-          html += '<tr class="history-row"><td colspan="' + span + '">' +
-            (e.kind === "team" ? teamBreakdownHTML(e, rows, cols) : lookupHistoryHTML(rows, side)) + "</td></tr>";
+
+        if (e.totals) {
+          if (e.kind === "player") {
+            html += '<tr class="totals-row"><td class="t win">Career <span class="muted">MLB</span></td>' +
+              statCells(e.totals.career, cols) + "<td></td></tr>";
+          }
+          html += '<tr class="totals-row"><td class="t win">' + esc(e.totals.season_year) + ' season <span class="muted">MLB</span></td>' +
+            statCells(e.totals.season, cols) + "<td></td></tr>";
+        } else {
+          html += '<tr class="totals-row"><td class="t win muted" colspan="' + span + '">Career and season totals didn\'t load' +
+            (e.totalsError ? " — " + esc(e.totalsError) : "") + " Look the player up again to retry.</td></tr>";
         }
+
+        WINDOWS.forEach(function (days) {
+          var rows = windowRows(e, days).filter(situation);
+          var line = Stats.statLine(rows, { contact: contact });
+          var key = e.key + "|" + days;
+          var open = state.lookup.expanded[key];
+          var focus = side === "batting" && days === 5;
+          html += '<tr class="player-row window-row' + (open ? " open" : "") + (focus ? " focus" : "") + '" data-key="' + esc(key) + '"' +
+            ' title="' + esc(shortDate(windowStart(e.end, days)) + " – " + shortDate(e.end)) + '">' +
+            '<td class="t win"><span class="caret">' + (open ? "▾" : "▸") + "</span>Last " + days + " days" +
+            (focus ? ' <span class="focus-tag">key for hitters</span>' : "") + "</td>" +
+            statCells(line, cols) + "<td></td></tr>";
+          if (open) {
+            html += '<tr class="history-row"><td colspan="' + span + '">' +
+              (e.kind === "team" ? teamBreakdownHTML(key, side, rows, cols) : lookupHistoryHTML(rows, side)) + "</td></tr>";
+          }
+        });
+        html += "</tbody>";
       });
-      html += "</tbody></table></div>";
+      html += "</table></div>";
     });
     if (!entries.length && state.api) {
-      html = '<p class="empty-note">Look up a player or a whole team over any date range. Add as many as you like ' +
-        "to compare them side by side, then use the filters to split by pitch type, count, handedness and more.</p>";
+      html = '<p class="empty-note">Look up a player or a whole team. Add as many as you like to compare them, ' +
+        "then use the filters to split the recent days by pitch type, count, handedness and more.</p>";
     }
     out.innerHTML = html;
 
@@ -1034,10 +1084,12 @@
   function addLookupEntry(entry, status) {
     state.lookup.entries = state.lookup.entries.filter(function (e) { return e.key !== entry.key; });
     state.lookup.entries.unshift(entry);
-    state.lookup.expanded[entry.key] = true;
     persistData("lookup", state.lookup.entries);
-    setStatus(status, "Loaded " + entry.rows.length.toLocaleString() + " pitches for " + entryLabel(entry) +
-      (entry.kind === "team" ? " " + entry.side : "") + " (" + shortDate(entry.start) + " – " + shortDate(entry.end) + ").", "ok");
+    var what = entryLabel(entry) + (entry.kind === "team" ? " " + entry.side : "");
+    setStatus(status, entry.totalsError
+      ? "Loaded the last " + LOOKUP_DAYS + " days for " + what + ", but career/season totals didn't load: " + entry.totalsError
+      : "Loaded " + what + ": career and season totals plus " + entry.rows.length.toLocaleString() +
+        " pitches from the last " + LOOKUP_DAYS + " days.", entry.totalsError ? "error" : "ok");
     renderLookupResults();
   }
 
@@ -1047,21 +1099,15 @@
     var role = document.getElementById("lk-role");
     var teamSel = document.getElementById("lk-team");
     var side = document.getElementById("lk-side");
-    var start = document.getElementById("lk-start");
-    var end = document.getElementById("lk-end");
     var post = document.getElementById("lk-post");
     var status = document.getElementById("lk-status");
     var cands = document.getElementById("lk-candidates");
-    var today = new Date();
     var scope = "player";
 
     teamSel.innerHTML = TEAM_CODES.map(function (c) {
       return '<option value="' + c + '">' + esc(TEAM_NAMES[c]) + "</option>";
     }).join("");
     teamSel.value = loadPref("lkTeam", "NYY");
-    start.value = daysAgo(14);
-    end.value = isoDate(today);
-    start.max = end.max = isoDate(today);
     post.checked = loadPref("lkPost", true);
     renderFilterFields();
 
@@ -1079,16 +1125,6 @@
       });
     });
 
-    form.querySelectorAll("[data-preset]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var y = today.getFullYear();
-        var preset = btn.getAttribute("data-preset");
-        if (/^\d+$/.test(preset)) { start.value = daysAgo(+preset - 1); end.value = isoDate(today); }
-        if (preset === "season") { start.value = y + "-03-01"; end.value = isoDate(today); }
-        if (preset === "last") { start.value = (y - 1) + "-03-01"; end.value = (y - 1) + "-11-30"; }
-      });
-    });
-
     document.getElementById("lk-reset-filters").addEventListener("click", function () {
       state.lookup.filters = {};
       savePref("lkFilters", {});
@@ -1096,56 +1132,55 @@
       renderLookupResults();
     });
 
-    function query() {
-      return "&start=" + start.value + "&end=" + end.value + "&postseason=" + (post.checked ? 1 : 0);
+    /* Statcast for the recent window and MLB totals, requested together;
+       a totals failure still keeps the Statcast rows. */
+    function load(base, statcastPath, totalsPath, label) {
+      var end = isoDate(new Date());
+      var q = "&start=" + daysAgo(LOOKUP_DAYS - 1) + "&end=" + end + "&postseason=" + (post.checked ? 1 : 0);
+      var totals = api(totalsPath).then(null, function (e) { return { error: e.message }; });
+      return withProgress(status, label, api(statcastPath + q)).then(function (payload) {
+        return totals.then(function (t) {
+          var rows = rowsFromPayload(payload);
+          if (!rows.length && t.error) {
+            setStatus(status, "No recent Statcast data for " + base.name + ", and " + t.error, "error");
+            return;
+          }
+          if (base.kind === "player" && rows.length && rows[0].player_name) {
+            var parts = rows[0].player_name.split(", ");
+            base.name = parts.length === 2 ? parts[1] + " " + parts[0] : rows[0].player_name;
+          }
+          base.v = ENTRY_VERSION;
+          base.start = payload.start;
+          base.end = payload.end;
+          base.rows = rows;
+          base.totals = t.error ? null : t;
+          base.totalsError = t.error || null;
+          addLookupEntry(base, status);
+        });
+      }).catch(function (e) { setStatus(status, e.message, "error"); });
     }
 
     function fetchPlayer(c) {
       cands.innerHTML = "";
       var sd = role.value;
-      var q = "player?id=" + c.id + "&role=" + (sd === "batting" ? "batter" : "pitcher") + query();
-      withProgress(status, "Pulling " + c.name + " from Baseball Savant", api(q)).then(function (payload) {
-        var rows = rowsFromPayload(payload);
-        if (!rows.length) {
-          setStatus(status, "No Statcast pitches for " + c.name + (sd === "batting" ? " as a batter" : " as a pitcher") +
-            " from " + shortDate(payload.start) + " – " + shortDate(payload.end) + ".", "error");
-          return;
-        }
-        addLookupEntry({
-          key: "player:" + sd + ":" + c.id + ":" + payload.start + ":" + payload.end,
-          kind: "player", side: sd, id: c.id, name: rows[0].player_name || c.name,
-          start: payload.start, end: payload.end, rows: rows
-        }, status);
-      }).catch(function (e) { setStatus(status, e.message, "error"); });
+      var r = sd === "batting" ? "batter" : "pitcher";
+      load({ key: "player:" + sd + ":" + c.id, kind: "player", side: sd, id: c.id, name: c.name },
+        "player?id=" + c.id + "&role=" + r, "totals?kind=player&id=" + c.id + "&side=" + sd,
+        "Pulling " + c.name + " from Baseball Savant and MLB");
     }
 
     function fetchTeam() {
       var team = teamSel.value, sd = side.value;
       savePref("lkTeam", team);
-      var days = Math.round((new Date(end.value) - new Date(start.value)) / 86400000) + 1;
-      var label = "Pulling " + TEAM_NAMES[team] + " " + sd + (days > 45 ? " — a long range downloads every game day the first time" : "");
-      withProgress(status, label, api("team?team=" + team + "&side=" + sd + query())).then(function (payload) {
-        var rows = rowsFromPayload(payload);
-        if (!rows.length) {
-          setStatus(status, "No " + TEAM_NAMES[team] + " games in that date range.", "error");
-          return;
-        }
-        addLookupEntry({
-          key: "team:" + sd + ":" + team + ":" + payload.start + ":" + payload.end,
-          kind: "team", side: sd, team: team, name: TEAM_NAMES[team],
-          start: payload.start, end: payload.end, rows: rows
-        }, status);
-      }).catch(function (e) { setStatus(status, e.message, "error"); });
+      load({ key: "team:" + sd + ":" + team, kind: "team", side: sd, team: team, name: TEAM_NAMES[team] },
+        "team?team=" + team + "&side=" + sd, "totals?kind=team&team=" + team + "&side=" + sd,
+        "Pulling " + TEAM_NAMES[team] + " " + sd + " from Baseball Savant and MLB");
     }
 
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();
       cands.innerHTML = "";
       savePref("lkPost", post.checked);
-      if (start.value > end.value) {
-        setStatus(status, "The start date is after the end date.", "error");
-        return;
-      }
       if (scope === "team") {
         fetchTeam();
         return;

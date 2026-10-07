@@ -33,6 +33,11 @@
           <input type="date" id="sv-bat-start" aria-label="Batters from">
           <span>to</span>
           <input type="date" id="sv-bat-end" aria-label="Batters to">
+          <span class="quick" aria-label="Batters: last N days">
+            <button type="button" class="ghost-btn" data-bat-days="5">5d</button>
+            <button type="button" class="ghost-btn" data-bat-days="10">10d</button>
+            <button type="button" class="ghost-btn" data-bat-days="15">15d</button>
+          </span>
         </fieldset>
         <fieldset class="range">
           <legend>Pitchers</legend>
@@ -116,19 +121,11 @@
           <option value="pitching">pitching</option>
         </select>
       </span>
-      <input type="date" id="lk-start" aria-label="From" required>
-      <span class="muted">to</span>
-      <input type="date" id="lk-end" aria-label="To" required>
-      <span class="presets">
-        <button type="button" class="ghost-btn" data-preset="7">7 days</button>
-        <button type="button" class="ghost-btn" data-preset="15">15 days</button>
-        <button type="button" class="ghost-btn" data-preset="30">30 days</button>
-        <button type="button" class="ghost-btn" data-preset="season">This season</button>
-        <button type="button" class="ghost-btn" data-preset="last">Last season</button>
-      </span>
-      <label class="check"><input type="checkbox" id="lk-post" checked> Postseason</label>
+      <label class="check"><input type="checkbox" id="lk-post" checked> Include postseason games</label>
       <button type="submit" class="upload-btn as-button">Look up</button>
     </form>
+    <p class="hint lookup-explain">Each lookup shows official career and this-season totals from MLB, plus
+      Statcast detail for the last 15, 10 and 5 days — no full-season download.</p>
     <div id="lk-candidates" class="candidates"></div>
     <p id="lk-status" class="sv-status" role="status"></p>
 

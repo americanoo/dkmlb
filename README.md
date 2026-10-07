@@ -31,7 +31,8 @@ When the server is running, the site shows a **Pull from Baseball Savant**
 panel:
 
 - **Batters / Pitchers date ranges** (defaults: last 8 days for batters,
-  last 30 for pitchers) and **Include postseason**. One click pulls every
+  last 30 for pitchers; 5d / 10d / 15d buttons set the batter range in one
+  click) and **Include postseason**. One click pulls every
   pitch league-wide for each range, so batters get true pitches seen and
   pitchers get full pitch-level data. Up to 45 days per pull.
 - Pulled days are cached in `server/cache/`, so a repeat or overlapping range
@@ -40,30 +41,36 @@ panel:
 - If Savant fails on a day, the pull stops with a message naming the day;
   the days that did load stay cached, so trying again is quick.
 
-The **Lookup** tab pulls any **player** (as a batter or pitcher) or any
-**team** (batting or pitching) over any date range: 7, 15 or 30 days, this
-season, last season, or custom (team lookups up to 250 days). Add as many as
-you like to compare them side by side; they don't affect the Batters/Pitchers
-tabs or ratings.
+The **Lookup** tab looks up any **player** (as a batter or pitcher) or any
+**team** (batting or pitching) without downloading a season of pitch data.
+Each lookup shows:
 
-- Each row shows **Results** for every pitch and PA (Pitches, PA/BF, AVG,
-  SLG, wOBA, xwOBA, K%, BB%, Whiff%, Chase%, plus CSW% and velo for
-  pitchers) and **Contact** for balls in play (BBE, HH, HardHit%, Barrel%,
-  EV, LA, SweetSpot%, distance, HR, XBH, hits).
-- A player row expands to every plate appearance, with the opposing pitcher
-  or batter, inning, count, pitch, velo, result and xwOBA.
-- A team row expands to each player's individual line (click any column to
-  sort), and each player expands to their plate appearances.
-- **Filters** apply to every result instantly, without re-downloading:
-  pitcher hand, batter hand, pitch type or group (fastballs, breaking,
-  offspeed), count (first pitch, hitter ahead, pitcher ahead, even, two
-  strikes, full), home/away, opponent, innings (1–3, 4–6, 7+), and times
-  through the order. Two **contact** filters, batted-ball type and minimum
-  exit velo, narrow only the Contact columns and the PA list, so a 95+ mph
-  filter doesn't distort K% or AVG.
-- The first long team lookup downloads every game day in the range (a full
-  season takes several minutes); those days are cached, so later lookups over
-  them are instant.
+- **Career** (players) and **this season**: MLB's official regular-season
+  totals from the MLB Stats API: PA, AVG, OBP, SLG, OPS, K%, BB%, HR and
+  hits, plus IP, ERA and WHIP for pitchers. One small request.
+- **Last 15, 10 and 5 days**: full Statcast detail from a single 15-day
+  pull, including Pitches, AVG/OBP/SLG/OPS, wOBA, xwOBA, K%, BB%, Whiff% and
+  Chase% (plus CSW% and velo for pitchers), and the contact stats (BBE, HH,
+  HardHit%, Barrel%, EV, LA, SweetSpot%, distance, HR, XBH, hits). For
+  hitters, the last-5-days row is highlighted as the key window.
+
+Click a day row to open it: a player row lists every plate appearance (the
+opposing pitcher or batter, inning, count, pitch, velo, result, xwOBA); a
+team row lists each player's line for that window (click any column to
+sort), and each player opens to their plate appearances. Add as many lookups
+as you like to compare them; looking someone up again refreshes their entry.
+Lookups don't affect the Batters/Pitchers tabs or ratings.
+
+**Filters** split the day rows instantly, without re-downloading: pitcher
+hand, batter hand, pitch type or group (fastballs, breaking, offspeed), count
+(first pitch, hitter ahead, pitcher ahead, even, two strikes, full),
+home/away, opponent, innings (1–3, 4–6, 7+), and times through the order.
+Two **contact** filters, batted-ball type and minimum exit velo, narrow only
+the contact columns and the PA list, so a 95+ mph filter doesn't distort K%
+or AVG. Career and season rows are official totals and ignore filters.
+
+If MLB's stats site doesn't respond, the lookup still shows the day rows and
+says the totals didn't load; looking the player up again retries.
 
 **Batted balls: All / 95+ mph** (Batters tab). The 95+ setting matches a
 Savant search filtered to exit velo 95+: EV, LA, distance, barrels, HR, hits

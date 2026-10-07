@@ -11,6 +11,7 @@ Statcast data from Baseball Savant through pybaseball:
   GET /api/players?name=              player search (MLBAM ids)
   GET /api/player?id=&role=&start=&end=   one player's pitches, any date range
   GET /api/team?team=&side=&start=&end=   a team's batting or pitching pitches
+  GET /api/totals?kind=&id=|team=&side=   career + season totals (MLB Stats API)
 
 League pulls are cached per day under server/cache/, so a repeat or
 overlapping date range only downloads the days it hasn't seen.
@@ -75,13 +76,21 @@ REGULAR_SEASON = {"R"}
 POSTSEASON = {"F", "D", "L", "W"}
 
 MAX_LEAGUE_DAYS = 45
-MAX_TEAM_DAYS = 250
+MAX_TEAM_DAYS = 45
 # Savant keeps correcting a day's data for a while after the games end,
 # so only days at least this old are cached permanently.
 FINAL_AFTER_DAYS = 2
 FETCH_WORKERS = 4
 
-STATS_API_PEOPLE = "https://statsapi.mlb.com/api/v1/people"
+STATS_API = "https://statsapi.mlb.com/api/v1"
+STATS_API_PEOPLE = STATS_API + "/people"
+TEAM_IDS = {
+    "LAA": 108, "AZ": 109, "BAL": 110, "BOS": 111, "CHC": 112, "CIN": 113, "CLE": 114,
+    "COL": 115, "DET": 116, "HOU": 117, "KC": 118, "LAD": 119, "WSH": 120, "NYM": 121,
+    "ATH": 133, "PIT": 134, "SD": 135, "SEA": 136, "SF": 137, "STL": 138, "TB": 139,
+    "TEX": 140, "TOR": 141, "MIN": 142, "PHI": 143, "ATL": 144, "CWS": 145, "MIA": 146,
+    "NYY": 147, "MIL": 158,
+}
 
 fetch_lock = threading.Lock()
 names_lock = threading.Lock()
@@ -391,6 +400,127 @@ def load_player(player_id, role, start, end):
 
 
 # --------------------------------------------------------------------------
+# Career / season totals (MLB Stats API, regular season)
+# --------------------------------------------------------------------------
+
+HITTING_COUNTS = ["gamesPlayed", "plateAppearances", "atBats", "hits", "doubles", "triples",
+                  "homeRuns", "baseOnBalls", "strikeOuts", "hitByPitch", "sacFlies",
+                  "totalBases", "numberOfPitches"]
+PITCHING_COUNTS = ["gamesPlayed", "battersFaced", "atBats", "hits", "homeRuns", "baseOnBalls",
+                   "strikeOuts", "hitByPitch", "earnedRuns", "outs", "numberOfPitches"]
+
+
+def _f(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _outs(stat):
+    outs = _f(stat.get("outs"))
+    if outs is None and stat.get("inningsPitched") not in (None, ""):
+        whole, _, part = str(stat["inningsPitched"]).partition(".")
+        outs = int(whole or 0) * 3 + int(part or 0)
+    return outs
+
+
+def _pick_stat(splits, counts):
+    """One stat dict for a split list. Traded players get a split per team;
+    prefer the combined split, otherwise add the teams' counting stats."""
+    splits = [sp for sp in (splits or []) if isinstance(sp.get("stat"), dict)]
+    if not splits:
+        return None
+    combined = [sp for sp in splits if "team" not in sp]
+    if combined:
+        return combined[0]["stat"]
+    if len(splits) == 1:
+        return splits[0]["stat"]
+    total = {}
+    for sp in splits:
+        st = sp["stat"]
+        for key in counts:
+            v = _outs(st) if key == "outs" else _f(st.get(key))
+            if v is not None:
+                total[key] = total.get(key, 0) + v
+    return total
+
+
+def _ratio(a, b):
+    return a / b if a is not None and b else None
+
+
+def hitting_line(st):
+    g = lambda k: _f(st.get(k))
+    pa, ab, h = g("plateAppearances"), g("atBats"), g("hits")
+    bb, so, hbp, sf = g("baseOnBalls") or 0, g("strikeOuts"), g("hitByPitch") or 0, g("sacFlies") or 0
+    tb = g("totalBases")
+    if tb is None and h is not None:
+        tb = h + (g("doubles") or 0) + 2 * (g("triples") or 0) + 3 * (g("homeRuns") or 0)
+    obp = _ratio((h or 0) + bb + hbp, (ab or 0) + bb + hbp + sf) if h is not None else None
+    slg = _ratio(tb, ab)
+    return {
+        "games": g("gamesPlayed"), "pitches": g("numberOfPitches"), "pa": pa,
+        "avg": _ratio(h, ab), "obp": obp, "slg": slg,
+        "ops": obp + slg if obp is not None and slg is not None else None,
+        "k_pct": _ratio(so, pa) * 100 if _ratio(so, pa) is not None else None,
+        "bb_pct": _ratio(bb, pa) * 100 if pa else None,
+        "hr": g("homeRuns"), "hits": h,
+    }
+
+
+def pitching_line(st):
+    g = lambda k: _f(st.get(k))
+    bf, so, bb, h, ab = g("battersFaced"), g("strikeOuts"), g("baseOnBalls") or 0, g("hits"), g("atBats")
+    outs, er = _outs(st), g("earnedRuns")
+    return {
+        "games": g("gamesPlayed"), "pitches": g("numberOfPitches"), "pa": bf,
+        "ip": f"{int(outs // 3)}.{int(outs % 3)}" if outs is not None else None,
+        "era": er * 27 / outs if er is not None and outs else None,
+        "whip": (bb + (h or 0)) * 3 / outs if outs else None,
+        "k_pct": _ratio(so, bf) * 100 if _ratio(so, bf) is not None else None,
+        "bb_pct": _ratio(bb, bf) * 100 if bf else None,
+        "avg": _ratio(h, ab), "hr": g("homeRuns"), "hits": h,
+    }
+
+
+def current_season():
+    today = dt.date.today()
+    return today.year if today.month >= 3 else today.year - 1
+
+
+def load_totals(kind, key, side):
+    group = "hitting" if side == "batting" else "pitching"
+    season = current_season()
+    if kind == "team":
+        url = f"{STATS_API}/teams/{TEAM_IDS[key]}/stats"
+        params = {"stats": "season", "group": group, "season": season}
+    else:
+        url = f"{STATS_API_PEOPLE}/{key}/stats"
+        params = {"stats": "career,season", "group": group, "season": season}
+    try:
+        resp = requests.get(url, params=params, timeout=20)
+    except requests.RequestException:
+        raise ApiError(502, "MLB's stats site couldn't be reached for career/season totals.")
+    if resp.status_code >= 400:
+        raise ApiError(502, f"MLB's stats site returned an error ({resp.status_code}) for career/season totals.")
+    try:
+        data = resp.json()
+    except ValueError:
+        raise ApiError(502, "MLB's stats site sent an unreadable response for career/season totals.")
+    counts = HITTING_COUNTS if group == "hitting" else PITCHING_COUNTS
+    to_line = hitting_line if group == "hitting" else pitching_line
+    out = {"season_year": season, "career": None, "season": None}
+    for block in data.get("stats", []):
+        kind_name = str((block.get("type") or {}).get("displayName", "")).lower()
+        if kind_name in ("career", "season"):
+            stat = _pick_stat(block.get("splits"), counts)
+            if stat:
+                out[kind_name] = to_line(stat)
+    return out
+
+
+# --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
 
@@ -508,6 +638,20 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = to_payload(df, role, seed_names(df, id_col), detail=True)
                 payload.update(start=start.isoformat(), end=end.isoformat(), role=role, id=player_id)
                 self.send_json(200, payload)
+            elif path == "/api/totals":
+                kind = (qs.get("kind") or ["player"])[0]
+                side = (qs.get("side") or ["batting"])[0]
+                if side not in ("batting", "pitching"):
+                    raise ApiError(400, "side must be batting or pitching.")
+                if kind == "team":
+                    key = (qs.get("team") or [""])[0].upper()
+                    if key not in TEAM_IDS:
+                        raise ApiError(400, "Pick a team from the list.")
+                else:
+                    key = (qs.get("id") or [""])[0]
+                    if not key.isdigit():
+                        raise ApiError(400, "Pick a player from the search results first.")
+                self.send_json(200, load_totals(kind, key, side))
             elif path == "/api/team":
                 team = (qs.get("team") or [""])[0].upper()
                 if team not in TEAMS:
@@ -516,7 +660,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if side not in ("batting", "pitching"):
                     raise ApiError(400, "side must be batting or pitching.")
                 start, end = parse_range(qs, MAX_TEAM_DAYS, f"Team lookups are limited to {MAX_TEAM_DAYS} "
-                                                             "days, about one season, at a time.")
+                                                             "days at a time.")
                 with fetch_lock:
                     try:
                         df = load_team(team, side, start, end)

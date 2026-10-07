@@ -188,7 +188,7 @@
      wOBA value for walks, strikeouts and HBP. ---- */
   function statLine(rows, opts) {
     var contactOk = (opts && opts.contact) || function () { return true; };
-    var pa = 0, ab = 0, hitsAll = 0, tb = 0, k = 0, bb = 0;
+    var pa = 0, ab = 0, hitsAll = 0, tb = 0, k = 0, bb = 0, hbp = 0, sf = 0;
     var wobaNum = 0, xwobaNum = 0, denom = 0;
     var swings = 0, whiffs = 0, csw = 0, outZone = 0, chases = 0;
     var velos = [], evs = [], las = [], dists = [];
@@ -203,6 +203,8 @@
         if (HIT_EVENTS[e]) { hitsAll++; tb += TOTAL_BASES[e]; }
         if (e === "strikeout" || e === "strikeout_double_play") k++;
         if (e === "walk" || e === "intent_walk") bb++;
+        if (e === "hit_by_pitch") hbp++;
+        if (e === "sac_fly" || e === "sac_fly_double_play") sf++;
       }
       var den = num(r.woba_denom);
       if (den) {
@@ -243,11 +245,16 @@
       }
     });
 
+    var obpDen = ab + bb + hbp + sf;
+    var obp = obpDen ? (hitsAll + bb + hbp) / obpDen : null;
+    var slg = ab ? tb / ab : null;
     return {
       pitches: rows.length,
       pa: pa,
       avg: ab ? hitsAll / ab : null,
-      slg: ab ? tb / ab : null,
+      obp: obp,
+      slg: slg,
+      ops: obp !== null && slg !== null ? obp + slg : null,
       woba: denom ? wobaNum / denom : null,
       xwoba: denom ? xwobaNum / denom : null,
       k_pct: pa ? (k / pa) * 100 : null,

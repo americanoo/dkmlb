@@ -303,6 +303,24 @@ code { font-size: 12px; color: var(--text); }
 .breakdown .data-grid { font-size: 12.5px; }
 .breakdown .data-grid th { background: var(--bg); }
 .data-grid tr.player-row.sub td { padding-top: 5px; padding-bottom: 5px; }
+.lookup-explain { margin: 8px 0 0; }
+.quick { display: inline-flex; gap: 4px; margin-left: 4px; }
+.quick .ghost-btn { padding: 3px 8px; font-size: 12px; }
+
+.lookup-table tbody.entry { border-top: 2px solid var(--border); }
+.lookup-table tr.entry-row td { padding: 10px 10px 6px; background: var(--panel-2); }
+.entry-name { font-weight: 700; font-size: 14.5px; margin-right: 10px; }
+.entry-note { margin-left: 10px; font-size: 12px; }
+.lookup-table td.win { white-space: nowrap; font-weight: 600; }
+.lookup-table td.win .muted { font-weight: 400; font-size: 11px; margin-left: 4px; }
+.lookup-table tr.totals-row td { color: var(--muted); }
+.lookup-table tr.totals-row td.win { color: var(--text); }
+.lookup-table tr.window-row.focus td { background: rgba(56, 193, 114, 0.09); }
+.lookup-table tr.window-row.focus td.win { box-shadow: inset 3px 0 0 var(--accent-2); }
+.focus-tag {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--accent-2); margin-left: 6px;
+}
 
 footer { padding: 8px 20px 20px; color: var(--muted); font-size: 12px; }
 
