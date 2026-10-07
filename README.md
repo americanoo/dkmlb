@@ -42,7 +42,8 @@ panel:
   the days that did load stay cached, so trying again is quick.
 
 **DraftKings slate** (same panel): pick one of today's MLB Classic slates
-(Showdown, Tiers and other single-game formats are left out) and click
+(Main, Happy Hour, Night and so on; Showdown, Tiers and other single-game
+formats are left out, whatever DraftKings names the full-slate format) and click
 **Load salaries**. No CSV download needed. The server reads the slate list
 and player list from the same public pages DraftKings' own lobby and lineup
 builder use (no login), and rebuilds them in the exact DKSalaries.csv

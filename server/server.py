@@ -671,6 +671,9 @@ def _slate_details(group_id):
 
 
 NON_CLASSIC_WORDS = ("showdown", "single game", "tiers", "snake", "best ball", "in-game")
+# Matched against DraftKings' game-type names. Anything not named here counts
+# as a full slate, whatever DraftKings calls it ("Classic", "Salary Cap"...).
+NON_CLASSIC_TYPES = NON_CLASSIC_WORDS + ("captain", "pick", "single")
 
 
 def slate_game_type(details, contests, games):
@@ -686,8 +689,15 @@ def slate_game_type(details, contests, games):
     if games == 1:
         return "Single game", "game count"
     if contests and flagged * 2 > len(contests):
-        return "Not classic", "contest names"
+        return "Single-game format", "contest names"
     return "Classic", "contest names"
+
+
+def is_classic_slate(game_type, games):
+    if games == 1:
+        return False
+    kind = (game_type or "").lower()
+    return not any(word in kind for word in NON_CLASSIC_TYPES)
 
 
 def dk_slates(include_all=False):
@@ -709,7 +719,7 @@ def dk_slates(include_all=False):
         contests = contests_by_group.get(gid, [])
         games = g.get("GameCount") or len(det.get("games") or [])
         game_type, decided_by = slate_game_type(det, contests, games)
-        is_classic = game_type.strip().lower() == "classic"
+        is_classic = is_classic_slate(game_type, games)
         if not is_classic:
             others[game_type] = others.get(game_type, 0) + 1
             if not include_all:

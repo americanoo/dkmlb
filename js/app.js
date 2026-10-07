@@ -1241,11 +1241,9 @@
         }
         setStatus(status, "", "");
         var saved = String(loadPref("dkSlate", ""));
-        var classic = slates.filter(function (sl) { return /classic/i.test(sl.game_type); })
-          .sort(function (a, b) { return (b.games || 0) - (a.games || 0); });
         var biggest = slates.slice().sort(function (a, b) { return (b.games || 0) - (a.games || 0); });
         var pick = slates.filter(function (sl) { return String(sl.id) === saved; })[0] ||
-          slates.filter(function (sl) { return sl.main; })[0] || classic[0] || biggest[0];
+          slates.filter(function (sl) { return sl.main; })[0] || biggest[0];
         sel.innerHTML = slates.map(function (sl) {
           return '<option value="' + sl.id + '">' + esc(sl.label) + "</option>";
         }).join("");
