@@ -201,6 +201,13 @@ main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; }
 .col-check { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; width: 50%; padding: 2px 0; cursor: pointer; }
 .col-check input { accent-color: var(--accent); }
 .data-grid th.custom-col { color: var(--accent-2); }
+.data-grid th.missing-col { color: #e0a85a; }
+.data-note {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  margin: 12px 20px 0; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid rgba(224, 168, 90, 0.5); background: rgba(224, 168, 90, 0.08); font-size: 13px;
+}
+.data-note span { flex: 1; min-width: 260px; }
 
 .formula-box { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .formula-box h3 { margin: 0 0 4px; font-size: 14px; }

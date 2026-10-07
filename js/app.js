@@ -67,6 +67,29 @@
     });
   }
 
+  /* Savant columns a stat needs beyond the basics. Data loaded before these
+     columns were pulled (or a cleaned CSV) leaves the stat blank. */
+  var NEEDS = {
+    woba: "woba_denom", xwoba: "woba_denom", xba: "estimated_ba_using_speedangle",
+    zone_pitches: "zone", zone_pct: "zone", z_swings: "zone", z_swing_pct: "zone",
+    out_zone_pitches: "zone", chases: "zone", chase_pct: "zone",
+    pulled: "hc_x", pull_pct: "hc_x", oppo: "hc_x", oppo_pct: "hc_x",
+    avg_spin: "release_spin_rate"
+  };
+  var MIN_SERVER_VERSION = 5;
+
+  /* Data columns the loaded rows don't carry at all. */
+  function missingColumns(kind) {
+    var rows = state[kind].rows;
+    var missing = {};
+    if (!rows.length) return missing;
+    var sample = rows[0];
+    Object.keys(NEEDS).forEach(function (k) {
+      if (!(NEEDS[k] in sample)) missing[NEEDS[k]] = true;
+    });
+    return missing;
+  }
+
   function allStats(kind) {
     return Catalog.stats[kind].concat(customDefs(kind));
   }
@@ -274,6 +297,7 @@
     document.querySelector(".controls").style.display = isVegas || isLookup ? "none" : "";
     if (isVegas || isLookup) document.getElementById("cols-panel").hidden = true;
     else renderColsPanel();
+    renderDataNote();
     if (isVegas) {
       renderVegas();
       return;
@@ -284,6 +308,39 @@
     }
     renderWeights(kind);
     renderTable(kind);
+  }
+
+  /* Explain blank stat columns when the loaded data lacks their columns. */
+  function renderDataNote() {
+    var note = document.getElementById("data-note");
+    var kind = statsTab();
+    var missing = kind ? missingColumns(kind) : {};
+    if (!kind || !Object.keys(missing).length) {
+      note.hidden = true;
+      return;
+    }
+    var names = [];
+    [["woba_denom", ["wOBA", "xwOBA"]], ["estimated_ba_using_speedangle", ["xBA"]],
+      ["zone", ["Zone%", "Z-Swing%", "Chase%"]], ["hc_x", ["Pull%", "Oppo%"]], ["release_spin_rate", ["Spin"]]]
+      .forEach(function (pair) {
+        if (pair[0] === "release_spin_rate" && !statDef(kind, "avg_spin")) return;
+        if (missing[pair[0]]) names = names.concat(pair[1]);
+      });
+    if (!names.length) { note.hidden = true; return; }
+    var list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0];
+    var canPull = state.api && state.serverCurrent;
+    note.innerHTML = "<span>The loaded " + kind + " data is missing the Savant columns behind " + esc(list) +
+      ", so those columns are blank (marked ⚠). " +
+      (canPull ? "Pull again to fill them in." :
+        state.api ? "Restart the stats server first (it's running older code), then pull again." :
+        "Start the stats server and pull from Savant, or upload a full (uncleaned) Savant export.") + "</span>" +
+      (canPull ? '<button type="button" id="data-note-pull" class="upload-btn as-button">Re-pull now</button>' : "");
+    note.hidden = false;
+    var btn = document.getElementById("data-note-pull");
+    if (btn) btn.addEventListener("click", function () {
+      document.getElementById("sv-pull").click();
+      note.hidden = true;
+    });
   }
 
   function renderStatusBar() {
@@ -425,11 +482,15 @@
       return true;
     }));
 
+    var missing = missingColumns(kind);
     var html = "<thead><tr>";
     showCols.forEach(function (c) {
       var arrow = s.sortKey === c.key ? (s.sortDir === -1 ? " ▼" : " ▲") : "";
-      html += '<th data-key="' + c.key + '"' + (c.desc ? ' title="' + esc(c.desc) + '"' : "") +
-        (c.custom ? ' class="custom-col"' : "") + ">" + esc(c.label) + arrow + "</th>";
+      var absent = NEEDS[c.key] && missing[NEEDS[c.key]];
+      var tip = (c.desc || "") + (absent ? " — not in the loaded data: pull from Savant again (or upload a full, uncleaned Savant export)" : "");
+      var cls = [c.custom ? "custom-col" : "", absent ? "missing-col" : ""].join(" ").trim();
+      html += '<th data-key="' + c.key + '"' + (tip ? ' title="' + esc(tip) + '"' : "") +
+        (cls ? ' class="' + cls + '"' : "") + ">" + esc(c.label) + (absent ? " ⚠" : "") + arrow + "</th>";
     });
     html += "</tr></thead><tbody>";
 
@@ -1327,8 +1388,14 @@
       document.getElementById("savant-offline").hidden = false;
       return;
     }
-    api("health").then(function () {
+    api("health").then(function (health) {
       state.api = true;
+      state.serverCurrent = (health.version || 0) >= MIN_SERVER_VERSION;
+      if (!state.serverCurrent) {
+        setStatus(document.getElementById("sv-status"), "The stats server is still running older code. Close its Terminal " +
+          "window and double-click start-server.command again (or run ./start-server.command) so new stats come through.", "error");
+      }
+      renderDataNote();
       document.getElementById("savant-panel").hidden = false;
       initDkSlates();
       if (state.tab === "lookup") renderLookup();

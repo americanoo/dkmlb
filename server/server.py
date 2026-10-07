@@ -50,6 +50,10 @@ except ImportError:
 # pybaseball's date parsing trips pandas deprecation warnings on every pull.
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+# Bumped whenever the site needs something new from the server; the page
+# compares it and asks for a restart when an older server is still running.
+SERVER_VERSION = 5
+
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
 DAY_CACHE = CACHE_DIR / "statcast-v3"
@@ -912,7 +916,8 @@ class Handler(SimpleHTTPRequestHandler):
     def handle_api(self, path, qs):
         try:
             if path == "/api/health":
-                self.send_json(200, {"ok": True, "pybaseball": getattr(pybaseball, "__version__", "?"),
+                self.send_json(200, {"ok": True, "version": SERVER_VERSION,
+                                     "pybaseball": getattr(pybaseball, "__version__", "?"),
                                      "today": dt.date.today().isoformat()})
             elif path == "/api/progress":
                 with progress_lock:

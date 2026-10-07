@@ -113,6 +113,12 @@ count beside it (Swings and Whiffs next to Whiff%, Chases next to Chase%, GB
 next to GB%…). Tick the ones to show; hover a name for its definition.
 Choices are saved per tab.
 
+Some stats need Savant columns that older pulls and cleaned CSVs don't have
+(wOBA/xwOBA, xBA, zone and chase stats, Pull/Oppo, Spin). When the loaded data
+lacks them, those headers are marked ⚠ and a notice above the table offers
+**Re-pull now**. If the page says the stats server is running older code,
+close its Terminal window and start it again so updates take effect.
+
 **Formula stats** turn any combination into your own column. Examples:
 `hh + barrels * 2 - k`, `hh / pa * 100`,
 `z(barrel_pct) + z(hh_per_pa) + itt_eff`. Formulas use the stat names shown
