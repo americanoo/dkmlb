@@ -572,7 +572,17 @@
     renderTable(kind);
   }
 
+  function renderWeightsSummary(kind) {
+    var rated = weights[kind].filter(function (w) { return w.weight > 0; }).map(function (w) {
+      var def = statDef(kind, w.key);
+      return (def ? def.label : w.key) + " " + w.weight;
+    });
+    document.getElementById("weights-summary").textContent = "· " + (WEIGHT_BUDGET - weightTotal(kind)) + " of " +
+      WEIGHT_BUDGET + " points left" + (rated.length ? " · " + rated.join(", ") : " · no stats rated yet");
+  }
+
   function renderWeights(kind) {
+    renderWeightsSummary(kind);
     var panel = document.getElementById("weights-body");
     var html = '<div class="points-left">Points left: <b id="points-left">' +
       (WEIGHT_BUDGET - weightTotal(kind)) + "</b> / " + WEIGHT_BUDGET + "</div>";
@@ -610,6 +620,7 @@
         weights[kind][idx].weight = allowed;
         input.parentNode.querySelector(".wval").textContent = allowed;
         document.getElementById("points-left").textContent = WEIGHT_BUDGET - weightTotal(kind);
+        renderWeightsSummary(kind);
         saveWeights(kind);
         recomputeRatings(kind);
       });
@@ -683,58 +694,78 @@
       return true;
     }));
 
+    /* A CSS grid instead of a table: when the columns don't fit the window,
+       each row (and the header, identically) wraps onto another line rather
+       than scrolling sideways. */
     var missing = missingColumns(kind);
-    var html = "<thead><tr>";
+    var html = '<div class="pgrid-head" role="row">';
     showCols.forEach(function (c) {
       var arrow = s.sortKey === c.key ? (s.sortDir === -1 ? " ▼" : " ▲") : "";
       var absent = c.key !== "name" && defMissing(c, missing);
-      var tip = (c.desc || "") + (absent ? " — not in the loaded data: pull from Savant again (or upload a full, uncleaned Savant export)" : "");
-      var cls = [c.custom ? "custom-col" : "", c.split ? "split-col" : "", absent ? "missing-col" : ""].join(" ").trim();
-      html += '<th data-key="' + c.key + '"' + (tip ? ' title="' + esc(tip) + '"' : "") +
-        (cls ? ' class="' + cls + '"' : "") + ">" + esc(c.label) + (absent ? " ⚠" : "") + arrow + "</th>";
+      var tip = (c.desc || c.label) + (absent ? " — not in the loaded data: pull from Savant again (or upload a full, uncleaned Savant export)" : "");
+      var cls = ["ph", c.key === "name" ? "name" : "", c.custom ? "custom-col" : "", c.split ? "split-col" : "",
+        absent ? "missing-col" : "", s.sortKey === c.key ? "sorted" : ""].join(" ").replace(/\s+/g, " ").trim();
+      html += '<div role="columnheader" tabindex="0" class="' + cls + '" data-key="' + c.key + '" title="' + esc(tip) +
+        '" aria-sort="' + (s.sortKey === c.key ? (s.sortDir === -1 ? "descending" : "ascending") : "none") + '">' +
+        esc(c.label) + (absent ? " ⚠" : "") + arrow + "</div>";
     });
-    html += "</tr></thead><tbody>";
+    html += "</div>";
 
-    players.forEach(function (p) {
+    players.forEach(function (p, i) {
       var expanded = s.expanded[p.name];
-      html += '<tr class="player-row' + (expanded ? " open" : "") + '" data-name="' + esc(p.name) + '">';
+      html += '<div class="prow' + (i % 2 ? " alt" : "") + (expanded ? " open" : "") + '" role="row" tabindex="0" aria-expanded="' + !!expanded +
+        '" data-name="' + esc(p.name) + '">';
       showCols.forEach(function (c) {
-        var cls = c.type === "text" ? "t" : "n";
         if (c.key === "name") {
-          html += '<td class="t name-cell"><span class="caret">' + (expanded ? "▾" : "▸") + "</span>" + esc(p.name) + "</td>";
+          html += '<div role="cell" class="pc name" title="' + esc(p.name) + '"><span class="caret">' + (expanded ? "▾" : "▸") +
+            "</span>" + esc(p.name) + "</div>";
         } else {
-          html += '<td class="' + cls + '">' + esc(fmt(p[c.key], c.type)) + "</td>";
+          var text = fmt(p[c.key], c.type);
+          html += '<div role="cell" class="pc' + (c.type === "text" ? " t" : "") + '">' + esc(text) + "</div>";
         }
       });
-      html += "</tr>";
-      if (expanded) {
-        html += '<tr class="history-row"><td colspan="' + showCols.length + '">' + historyHTML(kind, p) + "</td></tr>";
-      }
+      html += "</div>";
+      if (expanded) html += '<div class="phist">' + historyHTML(kind, p) + "</div>";
     });
-    html += "</tbody>";
     if (!players.length) {
-      html += '<tbody><tr><td colspan="' + showCols.length + '" class="empty">' +
-        (s.rows.length ? "No players match the current filters." : "No data yet — pull from Savant or upload a Savant CSV above.") +
-        "</td></tr></tbody>";
+      html += '<p class="empty">' +
+        (s.rows.length ? "No players match the current filters." : "No data yet — pull from Savant or upload a Savant CSV above.") + "</p>";
     }
+    document.getElementById("data-table").innerHTML = html;
+  }
 
-    var table = document.getElementById("data-table");
-    table.innerHTML = html;
-
-    table.querySelectorAll("th").forEach(function (th) {
-      th.addEventListener("click", function () {
-        var key = th.getAttribute("data-key");
+  /* Sorting and expanding on the player grid (one listener for every render). */
+  function initPlayerGrid() {
+    var grid = document.getElementById("data-table");
+    function act(target) {
+      var kind = statsTab();
+      if (!kind) return;
+      var s = state[kind];
+      var head = target.closest(".ph[data-key]");
+      if (head) {
+        var key = head.getAttribute("data-key");
         if (s.sortKey === key) s.sortDir = -s.sortDir;
         else { s.sortKey = key; s.sortDir = -1; }
         renderTable(kind);
-      });
-    });
-    table.querySelectorAll("tr.player-row").forEach(function (tr) {
-      tr.addEventListener("click", function () {
-        var name = tr.getAttribute("data-name");
+        var again = grid.querySelector('.ph[data-key="' + key + '"]');
+        if (again) again.focus();
+        return;
+      }
+      var row = target.closest(".prow");
+      if (row) {
+        var name = row.getAttribute("data-name");
         s.expanded[name] = !s.expanded[name];
         renderTable(kind);
-      });
+        var same = grid.querySelector('.prow[data-name="' + CSS.escape(name) + '"]');
+        if (same) same.focus();
+      }
+    }
+    grid.addEventListener("click", function (ev) { act(ev.target); });
+    grid.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      if (!ev.target.closest(".ph, .prow")) return;
+      ev.preventDefault();
+      act(ev.target);
     });
   }
 
@@ -2174,6 +2205,10 @@
     initSavantPanel();
     initLookup();
     initColsPanel();
+    initPlayerGrid();
+    var wp = document.getElementById("weights-panel");
+    wp.open = !!loadPref("weightsOpen", false);
+    wp.addEventListener("toggle", function () { savePref("weightsOpen", wp.open); });
     detectServer();
     updateSplitButtons();
     rebuildAll();

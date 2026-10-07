@@ -218,19 +218,18 @@
   <div id="data-note" class="data-note" role="status" hidden></div>
 
   <main id="main-data">
-    <div class="table-wrap">
-      <table id="data-table" class="data-grid"></table>
-    </div>
-    <aside class="weights">
-      <div class="weights-head">
-        <h2>Rating Weights</h2>
-        <button id="reset-weights" class="ghost-btn">Reset</button>
+    <details id="weights-panel" class="weights">
+      <summary><span class="weights-title">Rating weights</span> <span id="weights-summary" class="muted"></span></summary>
+      <div class="weights-inner">
+        <div class="weights-head">
+          <p class="hint">You have 10 points to spread across the stats — each point buys up to 1 rating point, so a full
+            allocation rates players 0–10. Maxing one stat at 10 leaves nothing for the rest. ↑/↓ = whether higher or lower is better.</p>
+          <button id="reset-weights" class="ghost-btn">Reset</button>
+        </div>
+        <div id="weights-body" class="weights-body"></div>
       </div>
-      <p class="hint">You have 10 points to spread across the stats — each point buys up to 1 rating
-        point, so a full allocation rates players 0–10. Maxing one stat at 10 leaves nothing for the
-        rest. ↓ = lower is better.</p>
-      <div id="weights-body"></div>
-    </aside>
+    </details>
+    <div id="data-table" class="pgrid" role="table" aria-label="Players"></div>
   </main>
 
   <footer>

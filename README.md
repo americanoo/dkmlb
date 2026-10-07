@@ -209,11 +209,19 @@ Each weighted stat is min-max scaled 0–1 across the current player pool
 every weight point buys up to one rating point, so a fully allocated
 budget rates players 0–10. All weights start at 0 — the rating stays
 blank until points are assigned. Weights are saved in your browser and
-ratings update live.
+ratings update live. The weights live in a collapsible **Rating weights**
+bar above the table; its summary line shows points left and the rated
+stats, and it remembers whether you left it open.
 
 Other tools:
 
-- Sortable columns (click a header, click again to reverse)
+- The player table fits the browser width — no sideways scrolling. When
+  there are more columns than fit on one line, each player's row (and the
+  sticky header) wraps onto extra lines with the columns in the same
+  positions, so a header always sits directly above its value. Hiding
+  columns in the Columns panel means fewer lines per player.
+- Sortable columns (click a header, click again to reverse; Enter/Space
+  also works from the keyboard)
 - Handedness splits: batters vs LHP/RHP, pitchers vs LHB/RHB
 - Player search and minimum-sample filter (Min BBE / Min pitches)
 - Everything auto-saves in the browser and reloads on the next visit:
