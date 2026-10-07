@@ -77,7 +77,7 @@
     pulled: "hc_x", pull_pct: "hc_x", oppo: "hc_x", oppo_pct: "hc_x",
     avg_spin: "release_spin_rate"
   };
-  var MIN_SERVER_VERSION = 6;
+  var MIN_SERVER_VERSION = 7;
 
   /* Data columns the loaded rows don't carry at all. */
   function missingColumns(kind) {
@@ -406,6 +406,87 @@
     };
   }
 
+  /* ---- Team and position for players DraftKings doesn't list (or before
+     salaries load). Team comes from the player's latest game; position
+     from MLB via the stats server, and for pitchers from whether they
+     started most of their games. ---- */
+  var PEOPLE_KEY = "dkmlb_people";
+  var PEOPLE_MAX_AGE = 3;
+  var people = loadPeople();
+  var peopleAsked = {};
+  var peopleTimer = null;
+
+  function loadPeople() {
+    try { return JSON.parse(localStorage.getItem(PEOPLE_KEY)) || {}; } catch (e) { return {}; }
+  }
+
+  function fillPlayerInfo(kind, players, rows) {
+    var info = {};
+    rows.forEach(function (r) {
+      var name = r.player_name;
+      if (!name) return;
+      var i = info[name] || (info[name] = { last: r, games: {} });
+      if ((r.game_date || "") >= (i.last.game_date || "")) i.last = r;
+      var game = r.game_pk || r.game_date;  // pulled data has no game_pk; a pitcher works one game a day
+      if (kind === "pitchers" && game) {
+        var inning = +r.inning || 99;
+        if (!(game in i.games) || inning < i.games[game]) i.games[game] = inning;
+      }
+    });
+    players.forEach(function (p) {
+      var i = info[p.name];
+      if (!p.id && i) p.id = (kind === "batters" ? i.last.batter : i.last.pitcher) || null;
+      var person = p.id ? people[p.id] : null;
+      if (!p.team) {
+        var r = i && i.last, team = null;
+        if (r && r.inning_topbot) team = (kind === "batters") === (r.inning_topbot === "Top") ? r.away_team : r.home_team;
+        p.team = team || (person && person.team) || null;
+      }
+      if (!p.position) {
+        var pos = person && person.pos;
+        if (kind === "pitchers" && i && (!pos || pos === "P" || pos === "TWP")) {
+          var games = 0, starts = 0;
+          Object.keys(i.games).forEach(function (g) { games++; if (i.games[g] === 1) starts++; });
+          if (games) pos = starts * 2 >= games ? "SP" : "RP";
+        }
+        p.position = pos || null;
+      }
+    });
+  }
+
+  function queuePeople() {
+    if (!state.api || (state.serverVersion || 0) < 7) return;
+    clearTimeout(peopleTimer);
+    peopleTimer = setTimeout(fetchPeople, 300);
+  }
+
+  function fetchPeople() {
+    var today = isoDate(new Date());
+    var need = [];
+    ["batters", "pitchers"].forEach(function (kind) {
+      state[kind].players.forEach(function (p) {
+        var id = p.id ? String(p.id) : "";
+        if (!/^\d+$/.test(id) || peopleAsked[id]) return;
+        var known = people[id];
+        if (known && known.t && (Date.parse(today) - Date.parse(known.t)) / 86400000 < PEOPLE_MAX_AGE) return;
+        peopleAsked[id] = true;
+        need.push(id);
+      });
+    });
+    if (!need.length) return;
+    var calls = [];
+    for (var n = 0; n < need.length; n += 400) calls.push(api("people?ids=" + need.slice(n, n + 400).join(",")));
+    Promise.all(calls).then(function (results) {
+      results.forEach(function (res) {
+        Object.keys(res.people || {}).forEach(function (id) {
+          people[id] = { pos: res.people[id].pos, team: res.people[id].team, t: today };
+        });
+      });
+      try { localStorage.setItem(PEOPLE_KEY, JSON.stringify(people)); } catch (e) { /* ignore */ }
+      rebuildAll();
+    }, function () { /* positions are a nice-to-have */ });
+  }
+
   function rebuild(kind) {
     var s = state[kind];
     var rows = splitFilter(kind, s.rows);
@@ -414,10 +495,12 @@
     s.span = dateSpan(s.rows);
     applySplits(kind, s.players, s.rows, contact);
     if (state.dk.length) DK.matchSalaries(s.players, state.dk);
+    fillPlayerInfo(kind, s.players, s.rows);
     Vegas.attach(s.players, state.vegas, kind);
     applyCustom(kind, s.players);
     Stats.computeRatings(s.players, weights[kind]);
     render();
+    queuePeople();
   }
 
   function rebuildAll() {
@@ -673,13 +756,71 @@
     return list;
   }
 
-  function renderTable(kind) {
-    var s = state[kind];
-    var players = visiblePlayers(kind);
+  /* ---- Player table: one line per player, headers on one line ----
+     Columns keep your order (drag a header to move it). Widths come from
+     the text they hold; when they don't fit the window the table first
+     tightens its font, then leaves off columns from the right end. */
+  var SPLIT_SUB = { career: "Car", l15: "15d", l10: "10d", l5: "5d", vsL: "vL", vsR: "vR" };
+  var FIT_STEPS = [{ font: 12.5, pad: 6 }, { font: 12, pad: 5 }, { font: 11.5, pad: 4 }, { font: 11, pad: 4 }, { font: 10.5, pad: 3 }];
+  var NAME_MAX = 150;
+  var NAME_COL = { key: "name", label: "Player", abbr: "Player", type: "text", desc: "Click a player for game-by-game history" };
+
+  function splitSub(kind, dim) {
+    if (dim === "season") {
+      var lb = state.leaders[kind];
+      return lb && lb.season_year ? "'" + String(lb.season_year).slice(-2) : "Szn";
+    }
+    return SPLIT_SUB[dim] || dim;
+  }
+
+  function baseAbbr(kind, key) {
+    var def = Catalog.stats[kind].filter(function (st) { return st.key === key; })[0];
+    return def ? def.abbr || def.label : key;
+  }
+
+  /* Header text: split columns show their window under the stat's name. */
+  function headText(kind, c) {
+    return c.split ? splitSub(kind, c.dim) : c.abbr || c.label;
+  }
+
+  /* Table cells drop the % sign (the header has it) to save width. */
+  function cellText(v, type) {
+    if (type === "pct" && v !== null && v !== undefined && v !== "") return Number(v).toFixed(1);
+    return fmt(v, type);
+  }
+
+  function loadOrder(kind) {
+    var o = loadPref("order_" + kind, null);
+    return Array.isArray(o) ? o : null;
+  }
+
+  /* Saved order first; columns it doesn't mention go after the column
+     they follow by default. */
+  function applyOrder(kind, cols) {
+    var saved = loadOrder(kind);
+    if (!saved) return cols;
+    var byKey = {};
+    cols.forEach(function (c) { byKey[c.key] = c; });
+    var out = [];
+    saved.forEach(function (k) { if (byKey[k] && out.indexOf(byKey[k]) === -1) out.push(byKey[k]); });
+    cols.forEach(function (c, i) {
+      if (out.indexOf(c) !== -1) return;
+      var at = 0;
+      for (var j = i - 1; j >= 0; j--) {
+        var idx = out.indexOf(cols[j]);
+        if (idx !== -1) { at = idx + 1; break; }
+      }
+      out.splice(at, 0, c);
+    });
+    return out;
+  }
+
+  /* Every column the table would show, in display order, before fitting. */
+  function tableCols(kind) {
     var hasDK = state.dk.length > 0;
     var hasVegas = state.vegas.length > 0;
     var shown = {};
-    visibleCols[kind].forEach(function (k) { shown[k] = true; });
+    visibleCols[kind].concat(splits[kind].stats).forEach(function (k) { shown[k] = true; });  // a split stat shows its own column too
     var splitsOf = {};
     splitDefs(kind).forEach(function (d) { (splitsOf[d.base] = splitsOf[d.base] || []).push(d); });
     var ordered = [];
@@ -688,67 +829,249 @@
       (splitsOf[st.key] || []).forEach(function (d) { ordered.push(d); });
     });
     ordered = ordered.concat(customDefs(kind).filter(function (c) { return shown[c.key]; }));
-    var showCols = [{ key: "name", label: "Player", type: "text" }].concat(ordered.filter(function (c) {
-      if (c.dk && !hasDK) return false;
+    return applyOrder(kind, [NAME_COL].concat(ordered.filter(function (c) {
+      if (c.dk && !hasDK && !c.always) return false;
       if (c.vegas && !hasVegas) return false;
       return true;
-    }));
+    })));
+  }
 
-    /* A CSS grid instead of a table: when the columns don't fit the window,
-       each row (and the header, identically) wraps onto another line rather
-       than scrolling sideways. */
+  /* Move columns (a header, or a split group) in front of another column
+     (null = to the end). Columns not shown right now keep their place. */
+  function moveColumns(kind, keys, beforeKey) {
+    var order = tableCols(kind).map(function (c) { return c.key; });
+    var moving = order.filter(function (k) { return keys.indexOf(k) !== -1; });
+    var rest = order.filter(function (k) { return keys.indexOf(k) === -1; });
+    var at = beforeKey === null ? rest.length : rest.indexOf(beforeKey);
+    if (at < 0) at = rest.length;
+    var next = rest.slice(0, at).concat(moving, rest.slice(at));
+    if (next.join("|") === order.join("|")) return false;
+    var prev = loadOrder(kind) || [];
+    prev.forEach(function (k, i) {
+      if (next.indexOf(k) !== -1) return;
+      var pos = 0;
+      for (var j = i - 1; j >= 0; j--) {
+        var idx = next.indexOf(prev[j]);
+        if (idx !== -1) { pos = idx + 1; break; }
+      }
+      next.splice(pos, 0, k);
+    });
+    savePref("order_" + kind, next);
+    renderTable(kind);
+    return true;
+  }
+
+  function resetOrder(kind) {
+    savePref("order_" + kind, null);
+    renderTable(kind);
+  }
+
+  var measureCtx = null, measureFont = "", measureCache = {}, measureCount = 0;
+  function textWidth(text, font) {
+    if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
+    var key = font + "|" + text;
+    var w = measureCache[key];
+    if (w === undefined) {
+      if (measureFont !== font) { measureCtx.font = font; measureFont = font; }
+      if (++measureCount > 50000) { measureCache = {}; measureCount = 0; }
+      w = measureCache[key] = measureCtx.measureText(text).width;
+    }
+    return w;
+  }
+
+  /* Natural width of each column at FIT_STEPS[0]'s font size, without
+     padding. Text width scales with font size, so smaller steps scale it. */
+  function naturalWidths(kind, cols, players, missing) {
+    var s = state[kind];
+    var fam = getComputedStyle(document.body).fontFamily;
+    var size = FIT_STEPS[0].font;
+    var cell = size + "px " + fam, bold = "600 " + size + "px " + fam;
+    return cols.map(function (c) {
+      var head = headText(kind, c) + (s.sortKey === c.key ? " ▼" : "") +
+        (c.key !== "name" && defMissing(c, missing) ? " ⚠" : "");
+      var w = textWidth(head, bold);
+      if (c.key === "name") {
+        var longest = 0;
+        players.forEach(function (p) { longest = Math.max(longest, textWidth(p.name, bold)); });
+        w = Math.max(w, Math.min(longest + 18, NAME_MAX));
+      } else {
+        players.forEach(function (p) { w = Math.max(w, textWidth(cellText(p[c.key], c.type), cell)); });
+      }
+      return w * 1.06 + 2;  // canvas ignores tabular digits; leave a little room
+    });
+  }
+
+  /* Runs of adjacent split columns of the same stat share a group header. */
+  function headerGroups(cols) {
+    var groups = [];
+    cols.forEach(function (c, i) {
+      var last = groups[groups.length - 1];
+      if (c.split && last && last.base === c.base && last.end === i - 1) last.end = i;
+      else groups.push({ base: c.split ? c.base : null, start: i, end: i });
+    });
+    return groups;
+  }
+
+  /* Pixel widths for cols[0..n) at a step, widening split groups whose
+     stat name is wider than their columns. */
+  function stepWidths(kind, cols, natural, step, n) {
+    var scale = step.font / FIT_STEPS[0].font;
+    var widths = natural.slice(0, n).map(function (w) { return Math.ceil(w * scale) + 2 * step.pad; });
+    var fam = getComputedStyle(document.body).fontFamily;
+    headerGroups(cols.slice(0, n)).forEach(function (g) {
+      if (!g.base) return;
+      var need = textWidth(baseAbbr(kind, g.base), "600 " + (step.font - 0.5) + "px " + fam) * 1.06 + 2 * step.pad + 2;
+      var have = 0;
+      for (var i = g.start; i <= g.end; i++) have += widths[i];
+      if (have >= need) return;
+      var add = Math.ceil((need - have) / (g.end - g.start + 1));
+      for (var j = g.start; j <= g.end; j++) widths[j] += add;
+    });
+    return widths;
+  }
+
+  function sum(list) {
+    return list.reduce(function (t, v) { return t + v; }, 0);
+  }
+
+  function fitColumns(kind, cols, players, missing, avail) {
+    var natural = naturalWidths(kind, cols, players, missing);
+    if (!avail) return { step: FIT_STEPS[0], n: cols.length, widths: stepWidths(kind, cols, natural, FIT_STEPS[0], cols.length) };
+    for (var i = 0; i < FIT_STEPS.length; i++) {
+      var w = stepWidths(kind, cols, natural, FIT_STEPS[i], cols.length);
+      if (sum(w) <= avail) return { step: FIT_STEPS[i], n: cols.length, widths: w };
+    }
+    var step = FIT_STEPS[FIT_STEPS.length - 1];
+    var n = cols.length;
+    var widths;
+    do {
+      n--;
+      widths = stepWidths(kind, cols, natural, step, n);
+    } while (n > 2 && sum(widths) > avail);
+    return { step: step, n: n, widths: widths };
+  }
+
+  function renderTable(kind) {
+    var s = state[kind];
+    var players = visiblePlayers(kind);
+    var wrap = document.getElementById("data-table");
     var missing = missingColumns(kind);
-    var html = '<div class="pgrid-head" role="row">';
-    showCols.forEach(function (c) {
+    var allCols = tableCols(kind);
+    var fit = fitColumns(kind, allCols, players, missing, Math.max(0, wrap.clientWidth - 2));
+    var cols = allCols.slice(0, fit.n);
+    var dropped = allCols.slice(fit.n);
+    var groups = headerGroups(cols);
+    var twoRows = groups.some(function (g) { return g.base; });
+
+    var html = "";
+    if (dropped.length) {
+      var names = dropped.map(function (c) { return c.label; });
+      html += '<p class="fit-note">' + dropped.length + " column" + (dropped.length === 1 ? "" : "s") +
+        " didn't fit at this width: " + esc(names.slice(0, 8).join(", ") + (names.length > 8 ? ", …" : "")) +
+        ". Drag the ones you need to the left, hide some in Columns &amp; formulas, or widen the window.</p>";
+    }
+    html += '<table class="ptable" style="font-size:' + fit.step.font + "px;--pad:" + fit.step.pad + 'px"><colgroup>' +
+      fit.widths.map(function (w) { return '<col style="width:' + w + 'px">'; }).join("") + "</colgroup><thead><tr>";
+
+    function headCell(c, extra) {
       var arrow = s.sortKey === c.key ? (s.sortDir === -1 ? " ▼" : " ▲") : "";
       var absent = c.key !== "name" && defMissing(c, missing);
-      var tip = (c.desc || c.label) + (absent ? " — not in the loaded data: pull from Savant again (or upload a full, uncleaned Savant export)" : "");
-      var cls = ["ph", c.key === "name" ? "name" : "", c.custom ? "custom-col" : "", c.split ? "split-col" : "",
-        absent ? "missing-col" : "", s.sortKey === c.key ? "sorted" : ""].join(" ").replace(/\s+/g, " ").trim();
-      html += '<div role="columnheader" tabindex="0" class="' + cls + '" data-key="' + c.key + '" title="' + esc(tip) +
-        '" aria-sort="' + (s.sortKey === c.key ? (s.sortDir === -1 ? "descending" : "ascending") : "none") + '">' +
-        esc(c.label) + (absent ? " ⚠" : "") + arrow + "</div>";
+      var tip = c.label + (c.desc && c.desc !== c.label ? " — " + c.desc : "") +
+        (absent ? " — not in the loaded data: pull from Savant again (or upload a full, uncleaned Savant export)" : "") +
+        "\nClick to sort · drag to move";
+      var cls = ["ph", extra || "", c.key === "name" ? "name" : "", c.custom ? "custom-col" : "", c.split ? "split-col" : "",
+        absent ? "missing-col" : "", s.sortKey === c.key ? "sorted" : "", c.type === "text" ? "t" : ""].join(" ").replace(/\s+/g, " ").trim();
+      return '<th scope="col" tabindex="0" class="' + cls + '" data-key="' + esc(c.key) + '" title="' + esc(tip) +
+        '" aria-sort="' + (s.sortKey === c.key ? (s.sortDir === -1 ? "descending" : "ascending") : "none") + '"' +
+        (twoRows && !c.split ? ' rowspan="2"' : "") + ">" + esc(headText(kind, c)) + (absent ? " ⚠" : "") + arrow + "</th>";
+    }
+
+    groups.forEach(function (g) {
+      if (!g.base) { html += headCell(cols[g.start]); return; }
+      var members = cols.slice(g.start, g.end + 1);
+      var full = (Catalog.stats[kind].filter(function (st) { return st.key === g.base; })[0] || {}).label || g.base;
+      html += '<th scope="colgroup" tabindex="0" class="pg" colspan="' + members.length + '" data-keys="' +
+        esc(members.map(function (c) { return c.key; }).join(",")) + '" title="' +
+        esc(full + ": " + members.map(function (c) { return headText(kind, c); }).join(", ") + "\nDrag to move these columns together") +
+        '">' + esc(baseAbbr(kind, g.base)) + "</th>";
     });
-    html += "</div>";
+    html += "</tr>";
+    if (twoRows) {
+      html += '<tr class="sub-row">';
+      cols.forEach(function (c) { if (c.split) html += headCell(c, "sub"); });
+      html += "</tr>";
+    }
+    html += "</thead><tbody>";
 
     players.forEach(function (p, i) {
       var expanded = s.expanded[p.name];
-      html += '<div class="prow' + (i % 2 ? " alt" : "") + (expanded ? " open" : "") + '" role="row" tabindex="0" aria-expanded="' + !!expanded +
+      html += '<tr class="prow' + (i % 2 ? " alt" : "") + (expanded ? " open" : "") + '" tabindex="0" aria-expanded="' + !!expanded +
         '" data-name="' + esc(p.name) + '">';
-      showCols.forEach(function (c) {
+      cols.forEach(function (c) {
         if (c.key === "name") {
-          html += '<div role="cell" class="pc name" title="' + esc(p.name) + '"><span class="caret">' + (expanded ? "▾" : "▸") +
-            "</span>" + esc(p.name) + "</div>";
+          html += '<td class="pc name" title="' + esc(p.name) + '"><span class="caret">' + (expanded ? "▾" : "▸") + "</span>" +
+            esc(p.name) + "</td>";
         } else {
-          var text = fmt(p[c.key], c.type);
-          html += '<div role="cell" class="pc' + (c.type === "text" ? " t" : "") + '">' + esc(text) + "</div>";
+          html += '<td class="pc' + (c.type === "text" ? " t" : "") + '">' + esc(cellText(p[c.key], c.type)) + "</td>";
         }
       });
-      html += "</div>";
-      if (expanded) html += '<div class="phist">' + historyHTML(kind, p) + "</div>";
+      html += "</tr>";
+      if (expanded) html += '<tr class="phist"><td colspan="' + cols.length + '">' + historyHTML(kind, p) + "</td></tr>";
     });
+    html += "</tbody></table>";
     if (!players.length) {
       html += '<p class="empty">' +
         (s.rows.length ? "No players match the current filters." : "No data yet — pull from Savant or upload a Savant CSV above.") + "</p>";
     }
-    document.getElementById("data-table").innerHTML = html;
+    /* Re-rendering (sorting, or data arriving in the background) keeps
+       keyboard focus on the same header or player. */
+    var focused = document.activeElement && wrap.contains(document.activeElement) ? document.activeElement : null;
+    var focusSel = !focused ? null
+      : focused.hasAttribute("data-keys") ? 'th[data-keys="' + CSS.escape(focused.getAttribute("data-keys")) + '"]'
+      : focused.hasAttribute("data-key") ? 'th[data-key="' + CSS.escape(focused.getAttribute("data-key")) + '"]'
+      : focused.hasAttribute("data-name") ? '.prow[data-name="' + CSS.escape(focused.getAttribute("data-name")) + '"]' : null;
+    wrap.innerHTML = html;
+    if (focusSel) {
+      var again = wrap.querySelector(focusSel);
+      if (again) again.focus({ preventScroll: true });
+    }
+    wrap.setAttribute("data-width", wrap.clientWidth);
+    if (twoRows) {
+      var first = wrap.querySelector("thead tr");
+      wrap.querySelector(".ptable").style.setProperty("--h1", first.getBoundingClientRect().height + "px");
+    }
   }
 
-  /* Sorting and expanding on the player grid (one listener for every render). */
+  /* Sorting, expanding and moving columns on the player table (one set of
+     listeners for every render). Drag a header (or a split group's name)
+     sideways to move it; Alt+←/→ moves the focused header. */
   function initPlayerGrid() {
-    var grid = document.getElementById("data-table");
+    var wrap = document.getElementById("data-table");
+    var drag = null;
+    var suppressClick = false;
+
+    function headKeys(th) {
+      return th.hasAttribute("data-keys") ? th.getAttribute("data-keys").split(",") : [th.getAttribute("data-key")];
+    }
+
+    function refocus(keys) {
+      var el = keys.length > 1
+        ? wrap.querySelector('th[data-keys="' + CSS.escape(keys.join(",")) + '"]')
+        : wrap.querySelector('th[data-key="' + CSS.escape(keys[0]) + '"]');
+      if (el) el.focus();
+    }
+
     function act(target) {
       var kind = statsTab();
       if (!kind) return;
       var s = state[kind];
-      var head = target.closest(".ph[data-key]");
+      var head = target.closest("th[data-key]");
       if (head) {
         var key = head.getAttribute("data-key");
         if (s.sortKey === key) s.sortDir = -s.sortDir;
-        else { s.sortKey = key; s.sortDir = -1; }
+        else { s.sortKey = key; s.sortDir = key === "name" ? 1 : -1; }
         renderTable(kind);
-        var again = grid.querySelector('.ph[data-key="' + key + '"]');
-        if (again) again.focus();
+        refocus([key]);
         return;
       }
       var row = target.closest(".prow");
@@ -756,16 +1079,121 @@
         var name = row.getAttribute("data-name");
         s.expanded[name] = !s.expanded[name];
         renderTable(kind);
-        var same = grid.querySelector('.prow[data-name="' + CSS.escape(name) + '"]');
+        var same = wrap.querySelector('.prow[data-name="' + CSS.escape(name) + '"]');
         if (same) same.focus();
       }
     }
-    grid.addEventListener("click", function (ev) { act(ev.target); });
-    grid.addEventListener("keydown", function (ev) {
+
+    wrap.addEventListener("click", function (ev) {
+      if (suppressClick) { suppressClick = false; return; }
+      act(ev.target);
+    });
+    wrap.addEventListener("keydown", function (ev) {
+      var th = ev.target.closest && ev.target.closest("th[data-key], th[data-keys]");
+      if (th && ev.altKey && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) {
+        var kind = statsTab();
+        if (!kind) return;
+        ev.preventDefault();
+        var keys = headKeys(th);
+        var cols = tableCols(kind);
+        /* Step over a whole split group at a time, unless moving one
+           column of a group among its neighbors. */
+        var units = th.classList.contains("sub")
+          ? cols.map(function (c) { return [c.key]; })
+          : headerGroups(cols).map(function (g) { return cols.slice(g.start, g.end + 1).map(function (c) { return c.key; }); });
+        var at = -1;
+        units.forEach(function (u, i) { if (u.indexOf(keys[0]) !== -1) at = i; });
+        var moved = ev.key === "ArrowLeft"
+          ? at > 0 && moveColumns(kind, keys, units[at - 1][0])
+          : at !== -1 && at < units.length - 1 && moveColumns(kind, keys, at + 2 < units.length ? units[at + 2][0] : null);
+        if (moved) refocus(keys);
+        return;
+      }
       if (ev.key !== "Enter" && ev.key !== " ") return;
-      if (!ev.target.closest(".ph, .prow")) return;
+      if (!ev.target.closest("th[data-key], .prow")) return;
       ev.preventDefault();
       act(ev.target);
+    });
+
+    /* Header cells left to right (the lower header row for split columns). */
+    function slots(skip) {
+      var list = [];
+      wrap.querySelectorAll("th[data-key]").forEach(function (th) {
+        var key = th.getAttribute("data-key");
+        if (skip.indexOf(key) !== -1) return;
+        var r = th.getBoundingClientRect();
+        list.push({ key: key, left: r.left, right: r.right });
+      });
+      return list.sort(function (a, b) { return a.left - b.left; });
+    }
+
+    wrap.addEventListener("pointerdown", function (ev) {
+      if (ev.button !== 0) return;
+      var th = ev.target.closest("th[data-key], th[data-keys]");
+      if (!th) return;
+      drag = { th: th, keys: headKeys(th), x: ev.clientX, id: ev.pointerId, on: false, before: null };
+    });
+    wrap.addEventListener("pointermove", function (ev) {
+      if (!drag || ev.pointerId !== drag.id) return;
+      if (!drag.on) {
+        if (Math.abs(ev.clientX - drag.x) < 6) return;
+        drag.on = true;
+        try { drag.th.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+        wrap.classList.add("col-dragging");
+        drag.keys.forEach(function (k) {
+          var el = wrap.querySelector('th[data-key="' + CSS.escape(k) + '"]');
+          if (el) el.classList.add("dragged");
+        });
+        drag.th.classList.add("dragged");
+        drag.marker = document.createElement("div");
+        drag.marker.className = "drop-marker";
+        drag.ghost = document.createElement("div");
+        drag.ghost.className = "drag-ghost";
+        drag.ghost.textContent = drag.th.textContent.replace(/ [▲▼]$/, "");
+        wrap.appendChild(drag.marker);
+        document.body.appendChild(drag.ghost);
+        drag.list = slots(drag.keys);
+      }
+      ev.preventDefault();
+      var list = drag.list, x = null;
+      drag.before = null;
+      for (var i = 0; i < list.length; i++) {
+        if (ev.clientX < (list[i].left + list[i].right) / 2) { drag.before = list[i].key; x = list[i].left; break; }
+      }
+      if (x === null) x = list.length ? list[list.length - 1].right : drag.x;
+      var box = wrap.getBoundingClientRect();
+      var table = wrap.querySelector(".ptable").getBoundingClientRect();
+      drag.marker.style.left = (x - box.left - 1) + "px";
+      drag.marker.style.top = (table.top - box.top) + "px";
+      drag.marker.style.height = Math.min(table.height, window.innerHeight) + "px";
+      drag.ghost.style.left = (ev.clientX + 12) + "px";
+      drag.ghost.style.top = (ev.clientY + 12) + "px";
+    });
+    function end(ev) {
+      if (!drag || ev.pointerId !== drag.id) return;
+      var d = drag;
+      drag = null;
+      if (!d.on) return;
+      wrap.classList.remove("col-dragging");
+      if (d.marker) d.marker.remove();
+      if (d.ghost) d.ghost.remove();
+      wrap.querySelectorAll("th.dragged").forEach(function (el) { el.classList.remove("dragged"); });
+      suppressClick = true;
+      setTimeout(function () { suppressClick = false; }, 0);
+      var kind = statsTab();
+      if (ev.type === "pointerup" && kind && moveColumns(kind, d.keys, d.before)) refocus(d.keys);
+    }
+    wrap.addEventListener("pointerup", end);
+    wrap.addEventListener("pointercancel", end);
+
+    /* Refit when the window width changes. */
+    var timer = null;
+    window.addEventListener("resize", function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        var kind = statsTab();
+        if (kind && String(wrap.clientWidth) !== wrap.getAttribute("data-width")) renderTable(kind);
+      }, 120);
     });
   }
 
@@ -1565,6 +1993,44 @@
     var loadBtn = document.getElementById("dk-load");
     var slates = [];
 
+    function slateDay(sl) {
+      var t = sl.start ? new Date(sl.start) : null;
+      return t && !isNaN(t) ? isoDate(t) : isoDate(new Date());
+    }
+
+    /* Today's slates (or the next day that has any): the one you picked
+       today, else the Main slate, else the biggest. */
+    function defaultSlate() {
+      var today = isoDate(new Date());
+      var days = slates.map(slateDay).sort();
+      var day = days.indexOf(today) !== -1 ? today : days[0];
+      var pool = slates.filter(function (sl) { return slateDay(sl) === day; });
+      var loaded = loadPref("dkLoaded", null);
+      var mine = loaded && loaded.day === today ? String(loaded.id) : "";
+      var biggest = pool.slice().sort(function (a, b) { return (b.games || 0) - (a.games || 0); });
+      return pool.filter(function (sl) { return String(sl.id) === mine; })[0] ||
+        pool.filter(function (sl) { return sl.main; })[0] || biggest[0];
+    }
+
+    function loadSalaries(id, auto) {
+      var slate = slates.filter(function (sl) { return String(sl.id) === String(id); })[0];
+      var label = slate ? slate.label : "the slate";
+      loadBtn.disabled = true;
+      setStatus(status, "Loading salaries for " + label + " from DraftKings…", "busy");
+      var ct = slate && slate.contest_type_id ? "&ct=" + slate.contest_type_id : "";
+      return api("dk/salaries?id=" + id + ct).then(function (res) {
+        var players = DK.parseSalaries(res.csv);
+        if (!players.length) throw new Error("DraftKings' player list came back empty. Try another slate or upload the CSV.");
+        state.dk = players;
+        persistData("dk", state.dk);
+        savePref("dkLoaded", { id: String(id), day: isoDate(new Date()), label: label });
+        rebuildAll();
+        setStatus(status, "Loaded " + players.length + " players from " + label + (auto ? " (today's slate, loaded automatically)." : "."), "ok");
+      }).catch(function (e) {
+        setStatus(status, e.message, "error");
+      }).then(function () { loadBtn.disabled = false; });
+    }
+
     function loadList() {
       sel.disabled = true;
       loadBtn.disabled = true;
@@ -1583,44 +2049,28 @@
           return;
         }
         setStatus(status, "", "");
-        var saved = String(loadPref("dkSlate", ""));
-        var biggest = slates.slice().sort(function (a, b) { return (b.games || 0) - (a.games || 0); });
-        var pick = slates.filter(function (sl) { return String(sl.id) === saved; })[0] ||
-          slates.filter(function (sl) { return sl.main; })[0] || biggest[0];
+        var pick = defaultSlate();
         sel.innerHTML = slates.map(function (sl) {
           return '<option value="' + sl.id + '">' + esc(sl.label) + "</option>";
         }).join("");
         sel.value = String(pick.id);
         sel.disabled = false;
         loadBtn.disabled = false;
+        /* Load today's slate on its own unless today's salaries (from a
+           slate or an uploaded CSV) are already in. */
+        var loaded = loadPref("dkLoaded", null);
+        if (!state.dk.length || !loaded || loaded.day !== isoDate(new Date())) loadSalaries(pick.id, true);
+        else if (loaded.label) setStatus(status, "Salaries from " + loaded.label + " are loaded.", "ok");
       }, function (e) {
         sel.innerHTML = '<option value="">Couldn\'t load slates</option>';
         setStatus(status, e.message + " You can still upload the salary CSV.", "error");
       });
     }
 
-    loadBtn.addEventListener("click", function () {
-      var id = sel.value;
-      if (!id) return;
-      var slate = slates.filter(function (sl) { return String(sl.id) === id; })[0];
-      var label = slate ? slate.label : "the slate";
-      loadBtn.disabled = true;
-      setStatus(status, "Loading salaries for " + label + " from DraftKings…", "busy");
-      var ct = slate && slate.contest_type_id ? "&ct=" + slate.contest_type_id : "";
-      api("dk/salaries?id=" + id + ct).then(function (res) {
-        var players = DK.parseSalaries(res.csv);
-        if (!players.length) throw new Error("DraftKings' player list came back empty. Try another slate or upload the CSV.");
-        state.dk = players;
-        persistData("dk", state.dk);
-        savePref("dkSlate", id);
-        rebuildAll();
-        setStatus(status, "Loaded " + players.length + " players from " + label + ".", "ok");
-      }).catch(function (e) {
-        setStatus(status, e.message, "error");
-      }).then(function () { loadBtn.disabled = false; });
-    });
+    sel.addEventListener("change", function () { if (sel.value) loadSalaries(sel.value, false); });
+    loadBtn.addEventListener("click", function () { if (sel.value) loadSalaries(sel.value, false); });
     document.getElementById("dk-refresh").addEventListener("click", loadList);
-    loadList();
+    restoredPromise.then(loadList);
   }
 
   /* ---- Career and season numbers (Savant season leaderboards) ---- */
@@ -1689,6 +2139,8 @@
     api("health").then(function (health) {
       state.api = true;
       state.serverCurrent = (health.version || 0) >= MIN_SERVER_VERSION;
+      state.serverVersion = health.version || 0;
+      restoredPromise.then(queuePeople);
       if (state.serverCurrent) restoredPromise.then(loadAllLeaders);
       if (!state.serverCurrent) {
         setStatus(document.getElementById("sv-status"), "The stats server is still running older code. Close its Terminal " +
@@ -1729,22 +2181,32 @@
     document.getElementById("cols-title").textContent =
       "Columns & formulas · " + (kind === "batters" ? "Batters" : "Pitchers");
     var shown = {};
-    visibleCols[kind].forEach(function (k) { shown[k] = true; });
+    visibleCols[kind].concat(splits[kind].stats).forEach(function (k) { shown[k] = true; });
     var all = allStats(kind).filter(function (st) { return !st.split; });
     var splitCount = splitDefs(kind).length;
     document.getElementById("cols-count").textContent =
       all.filter(function (st) { return shown[st.key]; }).length + " of " + all.length + " stats shown" +
       (splitCount ? " + " + splitCount + " split column" + (splitCount === 1 ? "" : "s") : "");
     renderSplitsBox(kind);
+    var split = {};
+    splits[kind].stats.forEach(function (k) { split[k] = true; });
     document.getElementById("cols-groups").innerHTML = groupedStats(kind, function (st) { return !st.split; })
       .map(function (pair) {
         return '<fieldset class="col-group"><legend>' + esc(pair[0]) +
-          ' <button type="button" class="link-btn" data-group-on="' + esc(pair[0]) + '">all</button>' +
-          ' <button type="button" class="link-btn" data-group-off="' + esc(pair[0]) + '">none</button></legend>' +
+          ' <button type="button" class="link-btn" data-group-on="' + esc(pair[0]) + '">all on</button>' +
+          ' <button type="button" class="link-btn" data-group-off="' + esc(pair[0]) + '">all off</button></legend>' +
           pair[1].map(function (st) {
-            var note = st.dk ? " · needs DK salaries" : st.vegas ? " · needs Vegas data" : "";
-            return '<label class="col-check" title="' + esc((st.desc || "") + note) + '"><input type="checkbox" data-col="' +
-              esc(st.key) + '"' + (shown[st.key] ? " checked" : "") + "> " + esc(st.label) + "</label>";
+            var note = st.dk && !st.always ? " · needs DK salaries" : st.vegas ? " · needs Vegas data" : "";
+            var mode = split[st.key] && splittable(st) ? "split" : shown[st.key] ? "on" : "off";
+            var opts = [["off", "Off"], ["on", "On"]];
+            if (splittable(st)) opts.push(["split", "Split"]);
+            var abbr = st.abbr && st.abbr !== st.label ? ' <span class="abbr">' + esc(st.abbr) + "</span>" : "";
+            return '<div class="col-item' + (mode !== "off" ? " is-on" : "") + '" title="' + esc((st.desc || "") + note) + '">' +
+              '<span class="col-name">' + esc(st.label) + abbr + "</span>" +
+              '<span class="seg" role="radiogroup" aria-label="' + esc(st.label) + '">' + opts.map(function (o) {
+                return '<label><input type="radio" name="col-' + esc(st.key) + '" value="' + o[0] + '" data-col="' + esc(st.key) + '"' +
+                  (mode === o[0] ? " checked" : "") + "><span>" + o[1] + "</span></label>";
+              }).join("") + "</span></div>";
           }).join("") + "</fieldset>";
       }).join("");
     renderFormulaList(kind);
@@ -1760,23 +2222,30 @@
 
   function renderSplitsBox(kind) {
     var sp = splits[kind];
+    var lb = state.leaders[kind];
     document.getElementById("split-dims").innerHTML = SPLIT_DIMS[kind].map(function (d) {
-      return '<label class="col-check split-dim"><input type="checkbox" data-dim="' + d[0] + '"' +
-        (sp.dims.indexOf(d[0]) !== -1 ? " checked" : "") + "> " + esc(d[1]) + "</label>";
+      var name = d[0] === "season" && lb && lb.season_year ? String(lb.season_year) : d[2];
+      return '<label class="col-check split-dim" title="' + esc(d[1]) + '"><input type="checkbox" data-dim="' + d[0] + '"' +
+        (sp.dims.indexOf(d[0]) !== -1 ? " checked" : "") + "> " + esc(name) + "</label>";
     }).join("");
-    var defs = {};
-    Catalog.stats[kind].forEach(function (st) { defs[st.key] = st; });
-    var chips = sp.stats.filter(function (k) { return defs[k]; });
-    document.getElementById("split-stats").innerHTML = chips.length ? chips.map(function (k) {
-      return '<span class="split-chip">' + esc(defs[k].label) + ' <button type="button" class="rm-btn" data-unsplit="' + esc(k) +
-        '" aria-label="Stop splitting ' + esc(defs[k].label) + '">✕</button></span>';
-    }).join("") : '<p class="hint">No stats split yet.</p>';
-    var options = groupedStats(kind, function (st) { return splittable(st) && sp.stats.indexOf(st.key) === -1; });
-    document.getElementById("add-split").innerHTML = '<option value="">Choose a stat…</option>' + options.map(function (pair) {
-      return '<optgroup label="' + esc(pair[0]) + '">' + pair[1].map(function (st) {
-        return '<option value="' + esc(st.key) + '">' + esc(st.label) + "</option>";
-      }).join("") + "</optgroup>";
-    }).join("");
+  }
+
+  /* Off / On / Split for one stat in the Columns panel. */
+  function setStatMode(kind, key, mode) {
+    visibleCols[kind] = visibleCols[kind].filter(function (k) { return k !== key; });
+    if (mode !== "off") visibleCols[kind].push(key);
+    saveCols(kind);
+    var wasSplit = splits[kind].stats.indexOf(key) !== -1;
+    if ((mode === "split") !== wasSplit) {
+      splits[kind].stats = splits[kind].stats.filter(function (k) { return k !== key; });
+      if (mode === "split") splits[kind].stats.push(key);
+      splitsChanged(kind);
+    } else {
+      renderTable(kind);
+      renderColsPanel();
+    }
+    var again = document.querySelector('#cols-groups input[name="col-' + CSS.escape(key) + '"][value="' + mode + '"]');
+    if (again) again.focus();
   }
 
   /* After the split setup changes: drop ratings on split columns that no
@@ -1908,6 +2377,16 @@
         var keys = mode === "default"
           ? Catalog.defaultColumns[kind].concat(custom[kind].map(function (c) { return c.key; }))
           : mode === "all" ? allStats(kind).filter(function (st) { return !st.split; }).map(function (st) { return st.key; }) : [];
+        if (mode !== "all") {
+          var before = splits[kind].stats.join();
+          splits[kind].stats = mode === "default" ? DEFAULT_SPLIT_STATS.slice() : [];
+          if (splits[kind].stats.join() !== before) {
+            visibleCols[kind] = keys;
+            saveCols(kind);
+            splitsChanged(kind);
+            return;
+          }
+        }
         setColumns(kind, keys);
       });
     });
@@ -1915,10 +2394,8 @@
     groupsBox.addEventListener("change", function (ev) {
       var kind = statsTab();
       var key = ev.target.getAttribute("data-col");
-      if (!kind || !key) return;
-      var keys = visibleCols[kind].filter(function (k) { return k !== key; });
-      if (ev.target.checked) keys.push(key);
-      setColumns(kind, keys);
+      if (!kind || !key || !ev.target.checked) return;
+      setStatMode(kind, key, ev.target.value);
     });
     groupsBox.addEventListener("click", function (ev) {
       var kind = statsTab();
@@ -1927,6 +2404,13 @@
       var groupKeys = allStats(kind).filter(function (st) { return st.group === (on || off); })
         .map(function (st) { return st.key; });
       var keys = visibleCols[kind].filter(function (k) { return groupKeys.indexOf(k) === -1; });
+      if (off && splits[kind].stats.some(function (k) { return groupKeys.indexOf(k) !== -1; })) {
+        splits[kind].stats = splits[kind].stats.filter(function (k) { return groupKeys.indexOf(k) === -1; });
+        visibleCols[kind] = keys;
+        saveCols(kind);
+        splitsChanged(kind);
+        return;
+      }
       setColumns(kind, on ? keys.concat(groupKeys) : keys);
     });
 
@@ -1938,19 +2422,6 @@
       if (ev.target.checked) dims.push(dim);
       splits[kind].dims = SPLIT_DIMS[kind].map(function (d) { return d[0]; })
         .filter(function (d) { return dims.indexOf(d) !== -1; });
-      splitsChanged(kind);
-    });
-    document.getElementById("split-stats").addEventListener("click", function (ev) {
-      var kind = statsTab();
-      var stat = ev.target.getAttribute("data-unsplit");
-      if (!kind || !stat) return;
-      splits[kind].stats = splits[kind].stats.filter(function (k) { return k !== stat; });
-      splitsChanged(kind);
-    });
-    document.getElementById("add-split").addEventListener("change", function () {
-      var kind = statsTab();
-      if (!kind || !this.value) return;
-      splits[kind].stats.push(this.value);
       splitsChanged(kind);
     });
     document.getElementById("split-visible").addEventListener("click", function () {
@@ -1968,6 +2439,10 @@
       if (!kind) return;
       splits[kind].stats = [];
       splitsChanged(kind);
+    });
+    document.getElementById("order-reset").addEventListener("click", function () {
+      var kind = statsTab();
+      if (kind) resetOrder(kind);
     });
 
     var form = document.getElementById("formula-form");
@@ -2110,6 +2585,7 @@
       handleFile(this, function (text) {
         state.dk = DK.parseSalaries(text);
         persistData("dk", state.dk);
+        savePref("dkLoaded", { id: "csv", day: isoDate(new Date()), label: "your uploaded salary CSV" });
         rebuildAll();
       });
     });

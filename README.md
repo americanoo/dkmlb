@@ -43,13 +43,16 @@ panel:
 
 **DraftKings slate** (same panel): pick one of today's MLB Classic slates
 (Main, Happy Hour, Night and so on; Showdown, Tiers and other single-game
-formats are left out, whatever DraftKings names the full-slate format) and click
-**Load salaries**. No CSV download needed. The server reads the slate list
+formats are left out, whatever DraftKings names the full-slate format). When
+the page opens, **today's slate loads by itself**: the one you picked earlier
+today, else the Main slate, else the day's biggest (if today's slates have all
+started, the next day's). Picking another slate in the list loads it straight
+away, and **Reload salaries** fetches it again. A salary CSV you upload today
+isn't replaced. No CSV download needed. The server reads the slate list
 and player list from the same public pages DraftKings' own lobby and lineup
 builder use (no login), and rebuilds them in the exact DKSalaries.csv
 layout, so matching, Value and "Build matchups from DK slate" work just as
-with an upload. The biggest slate is preselected, and your last choice is
-remembered. If no Classic slate shows, the panel says whether DraftKings
+with an upload. If no Classic slate shows, the panel says whether DraftKings
 has posted no MLB slates yet or only non-Classic ones. To see every slate
 DraftKings lists and how each was classified, open
 http://localhost:8000/api/dk/slates?all=1. These pages aren't an official API. The server
@@ -110,8 +113,10 @@ Barrels, Barrel%, Barrel/PA%, Avg/Max EV, EV90, LA, SweetSpot%, distance,
 HR, XBH, hits, FO), Batted-ball mix (GB/LD/FB/PU%, HR/FB, Pull%, Oppo%) and,
 for pitchers, Velo, Max Velo, Spin, K/9, BB/9, HR/9. Every rate has its raw
 count beside it (Swings and Whiffs next to Whiff%, Chases next to Chase%, GB
-next to GB%…). Tick the ones to show; hover a name for its definition.
-Choices are saved per tab.
+next to GB%…). Each stat has an **Off / On / Split** choice: Split shows the
+stat plus its own column for each split window (see below). Hover a name for
+its definition; the grey text beside it is its short table header. Choices
+are saved per tab.
 
 Some stats need Savant columns that older pulls and cleaned CSVs don't have
 (wOBA/xwOBA, xBA, zone and chase stats, Pull/Oppo, Spin). When the loaded data
@@ -120,9 +125,11 @@ lacks them, those headers are marked ⚠ and a notice above the table offers
 close its Terminal window and start it again so updates take effect.
 
 **Split columns** give a stat its own columns for **Career, this season,
-and the last 15, 10 and 5 days** (and optionally vs L / vs R). wOBA, HH, GB%,
-FB% and Barrels start split all five ways, e.g. HH Career · HH 2026 · HH 15d ·
-HH 10d · HH 5d.
+and the last 15, 10 and 5 days** (and optionally vs L / vs R): choose
+**Split** on the stat, and tick the windows you want in the **Split windows**
+row at the top of the panel. wOBA, HH, GB%, FB% and Barrels start split all
+five ways. In the table they sit under one heading, e.g. **HH** over
+Car · '26 · 15d · 10d · 5d.
 
 Career (Statcast era, 2015 on) and season numbers come from Baseball Savant's
 season leaderboards (expected stats, exit velocity & barrels, batted ball),
@@ -137,7 +144,7 @@ leaderboards, the status line says so and those columns stay blank (⚠).
 Season leaderboards cover the regular season; Savant's barrel and hard-hit
 counts are its official ones, while the day windows use this site's
 calculations from pitch data.
-Pick stats to split in the panel (or split every stat shown). Day windows
+**Split every stat that's on** and **Remove all splits** do it in bulk. Day windows
 count back from the most recent game in the loaded data, so pull at least
 15 days (the batter pull now defaults to 15; a notice appears when the data
 is shorter than a window). Split columns ignore the table's vs LHP/RHP
@@ -215,11 +222,22 @@ stats, and it remembers whether you left it open.
 
 Other tools:
 
-- The player table fits the browser width — no sideways scrolling. When
-  there are more columns than fit on one line, each player's row (and the
-  sticky header) wraps onto extra lines with the columns in the same
-  positions, so a header always sits directly above its value. Hiding
-  columns in the Columns panel means fewer lines per player.
+- **One line per player, no sideways scrolling.** Headers are short
+  (Sal, FPPG, HH%, Brl, mxEV, SwSp%…; hover any header for its full name and
+  definition), cells drop the % sign, and column widths follow their
+  contents. When columns don't fit, the font tightens a little, and if they
+  still don't fit, the right-most columns are left off with a note naming
+  them. Put what matters most on the left.
+- **Move columns** by dragging a header sideways (drag a split heading like
+  **HH** to move all its windows together), or focus a header and press
+  Alt+← / Alt+→. The order is saved per tab; **Reset column order** in the
+  Columns panel undoes it.
+- **Team and Pos** show for every player, not just ones on the loaded slate:
+  DraftKings' team and position once salaries load, otherwise the team from
+  the player's latest game and MLB's listed position (outfielders as OF)
+  via the stats server, refreshed every few days. Pitchers without a DK
+  listing show SP or RP from whether they started most of their games.
+  Salary is always a column; it's blank until a slate's salaries load.
 - Sortable columns (click a header, click again to reverse; Enter/Space
   also works from the keyboard)
 - Handedness splits: batters vs LHP/RHP, pitchers vs LHB/RHB

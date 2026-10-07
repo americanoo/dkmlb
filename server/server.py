@@ -54,13 +54,14 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Bumped whenever the site needs something new from the server; the page
 # compares it and asks for a restart when an older server is still running.
-SERVER_VERSION = 6
+SERVER_VERSION = 7
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
 DAY_CACHE = CACHE_DIR / "statcast-v3"
 OLD_DAY_CACHES = [CACHE_DIR / "statcast-v1", CACHE_DIR / "statcast-v2"]
 NAMES_FILE = CACHE_DIR / "names.json"
+PEOPLE_FILE = CACHE_DIR / "people.json"
 LEADER_CACHE = CACHE_DIR / "leaderboards"
 
 # Columns the site reads, plus ids/game type used here for names and filters.
@@ -254,6 +255,54 @@ def resolve_names(ids, seed=None):
         if changed:
             _save_names(names)
     return {i: names.get(i, f"Player {i}") for i in ids}
+
+
+# Positions and teams change with trades and call-ups: refresh after a few days.
+PEOPLE_MAX_AGE_DAYS = 3
+TEAM_ABBR = {v: k for k, v in TEAM_IDS.items()}
+OUTFIELD = {"LF", "CF", "RF"}
+
+
+def _person_info(p):
+    pos = ((p.get("primaryPosition") or {}).get("abbreviation") or "").upper()
+    if pos in OUTFIELD:
+        pos = "OF"  # DraftKings' label
+    team = TEAM_ABBR.get((p.get("currentTeam") or {}).get("id"), "")
+    return {"pos": pos, "team": team}
+
+
+def people_info(ids):
+    """MLB's listed position and current team for MLBAM ids (cached)."""
+    ids = sorted({i for i in ids if i.isdigit()})
+    today = dt.date.today()
+    with names_lock:
+        try:
+            cache = json.loads(PEOPLE_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            cache = {}
+
+        def fresh(i):
+            try:
+                return (today - dt.date.fromisoformat(cache[i]["t"])).days < PEOPLE_MAX_AGE_DAYS
+            except (KeyError, TypeError, ValueError):
+                return False
+
+        missing = [i for i in ids if not fresh(i)]
+        for n in range(0, len(missing), 150):
+            chunk = missing[n:n + 150]
+            try:
+                resp = requests.get(STATS_API_PEOPLE, params={"personIds": ",".join(chunk), "hydrate": "currentTeam"},
+                                    timeout=20)
+                resp.raise_for_status()
+            except Exception as exc:
+                print(f"  position lookup failed: {exc}", file=sys.stderr)
+                break
+            for p in resp.json().get("people", []):
+                cache[str(p["id"])] = dict(_person_info(p), t=today.isoformat())
+        if missing:
+            PEOPLE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            PEOPLE_FILE.write_text(json.dumps(cache), encoding="utf-8")
+    return {i: {"pos": cache[i]["pos"], "team": cache[i]["team"]} for i in ids if i in cache}
 
 
 def seed_names(df, id_col):
@@ -1194,6 +1243,11 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ApiError(502, "Baseball Savant's leaderboards didn't load (" +
                                    "; ".join(data["failed"][:2]) + "). Try again in a minute.")
                 self.send_json(200, data)
+            elif path == "/api/people":
+                ids = [i for i in (qs.get("ids") or [""])[0].split(",") if i]
+                if len(ids) > 1000:
+                    raise ApiError(400, "Ask for at most 1000 players at a time.")
+                self.send_json(200, {"people": people_info(ids)})
             elif path == "/api/dk/slates":
                 self.send_json(200, dk_slates(include_all=flag(qs, "all", default=False)))
             elif path == "/api/dk/salaries":

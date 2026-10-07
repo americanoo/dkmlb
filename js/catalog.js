@@ -19,9 +19,9 @@
 
   function slateStats(side) {
     var list = [
-      S("team", "Team", "text", SLATE, "DraftKings team", { dk: true, text: true }),
-      S("position", "Pos", "text", SLATE, "DraftKings position(s)", { dk: true, text: true }),
-      S("salary", "Salary", "money", SLATE, "DraftKings salary", { dk: true }),
+      S("team", "Team", "text", SLATE, "Team (DraftKings once salaries load; otherwise from the game data)", { text: true }),
+      S("position", "Pos", "text", SLATE, "Position (DraftKings once salaries load; otherwise MLB's listed position)", { text: true }),
+      S("salary", "Salary", "money", SLATE, "DraftKings salary (blank until a slate's salaries load)", { dk: true, always: true }),
       S("avgPoints", "DK Avg", "num1", SLATE, "DraftKings average fantasy points per game", { dk: true }),
       S("rating", "Rating", "num1", SLATE, "Your 0–10 rating from the weights panel", { noFormula: true }),
       S("value", "Value", "num2", SLATE, "Rating per $1,000 of salary", { dk: true, noFormula: true })
@@ -219,6 +219,32 @@
     S("bb_per_9", "BB/9", "num2", PIT, "Walks per 9 innings", { lower: true }),
     S("hr_per_9", "HR/9", "num2", PIT, "Home runs per 9 innings", { lower: true })
   ]);
+
+  /* Short header labels for the player table (the full label and description
+     show on hover). Stats not listed use their label. */
+  var ABBR = {
+    position: "Pos", salary: "Sal", avgPoints: "FPPG", rating: "Rtg", value: "Val", itt_eff: "ITT", opp_itt: "oITT",
+    handle: "Hdl%", pitches: "Pit", swings: "Sw", swing_pct: "Sw%", whiffs: "Whf", whiff_pct: "Whf%",
+    contact_pct: "Con%", zone_pitches: "ZPit", zone_pct: "Z%", z_swings: "ZSw", z_swing_pct: "ZSw%",
+    out_zone_pitches: "OPit", chases: "Chs", chase_pct: "Chs%", called_strikes: "CStr", first_pitches: "FP",
+    first_swings: "FPSw", first_swing_pct: "FPSw%", first_strikes: "FPS", first_strike_pct: "FPS%",
+    hardhit_pct: "HH%", hardhit_against_pct: "HH%", hh_per_pa: { batters: "HH/PA", pitchers: "HH/BF" },
+    barrels: "Brl", barrel_pct: "Brl%", barrels_per_pa: { batters: "Brl/PA", pitchers: "Brl/BF" },
+    avg_ev: "EV", ev_against: "EV", max_ev: "mxEV", avg_la: "LA", sweet_spots: "SwSp", sweetspot_pct: "SwSp%",
+    avg_dist: "Dist", max_dist: "mxDst", hits: "BIPH", hr_on_fb: "HRoFB", pulled: "Pull", hr_allowed: "HR",
+    hits_allowed: "BIPH", avg_velo: "Velo", max_velo: "mxVel", k_minus_bb_pct: "K-BB%",
+    avg: { pitchers: "AVG" }, obp: { pitchers: "OBP" }, slg: { pitchers: "SLG" }, ops: { pitchers: "OPS" },
+    iso: { pitchers: "ISO" }, babip: { pitchers: "BABIP" }, woba: { pitchers: "wOBA" },
+    xwoba: { pitchers: "xwOBA" }, xba: { pitchers: "xBA" }, ev90: { pitchers: "EV90" }, xbh: { pitchers: "XBH" },
+    itt_eff_p: "tITT"
+  };
+  [["batters", BATTERS], ["pitchers", PITCHERS]].forEach(function (pair) {
+    pair[1].forEach(function (st) {
+      var a = ABBR[pair[0] === "pitchers" && st.key === "itt_eff" ? "itt_eff_p" : st.key];
+      if (a && typeof a === "object") a = a[pair[0]];
+      st.abbr = a || st.label;
+    });
+  });
 
   /* The columns each tab showed before the chooser existed. */
   var DEFAULT_COLUMNS = {
