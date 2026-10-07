@@ -1229,7 +1229,7 @@
       api("dk/slates").then(function (res) {
         slates = res.slates || [];
         if (!slates.length) {
-          sel.innerHTML = '<option value="">No MLB slates open on DraftKings right now</option>';
+          sel.innerHTML = '<option value="">No MLB Classic slates open on DraftKings right now</option>';
           return;
         }
         var saved = String(loadPref("dkSlate", ""));

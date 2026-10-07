@@ -670,13 +670,32 @@ def _slate_details(group_id):
         return {}
 
 
+NON_CLASSIC_WORDS = ("showdown", "single game", "tiers", "snake", "best ball", "in-game")
+
+
+def slate_game_type(details, contests, games):
+    """Classic, Showdown, Tiers... from the slate details, else from its
+    contests' game type or names; a one-game slate is never Classic."""
+    game_type = (details.get("contestType") or {}).get("gameType")
+    if game_type:
+        return game_type
+    types = [c.get("gameType") for c in contests if c.get("gameType")]
+    if types:
+        return max(set(types), key=types.count)
+    flagged = sum(1 for c in contests if any(w in str(c.get("n") or "").lower() for w in NON_CLASSIC_WORDS))
+    if games == 1 or (contests and flagged * 2 > len(contests)):
+        return "Not classic"
+    return "Classic"
+
+
 def dk_slates():
+    """Today's MLB Classic slates."""
     data = dk_get(f"{DK_WWW}/lobby/getcontests", {"sport": "MLB"})
     groups = [g for g in data.get("DraftGroups") or []
               if g.get("DraftGroupId") and str(g.get("Sport", "MLB")).upper() == "MLB"]
-    contest_counts = {}
+    contests_by_group = {}
     for c in data.get("Contests") or []:
-        contest_counts[c.get("dg")] = contest_counts.get(c.get("dg"), 0) + 1
+        contests_by_group.setdefault(c.get("dg"), []).append(c)
     with ThreadPoolExecutor(max_workers=6) as pool:
         details = dict(zip([g["DraftGroupId"] for g in groups],
                            pool.map(_slate_details, [g["DraftGroupId"] for g in groups])))
@@ -684,13 +703,14 @@ def dk_slates():
     for g in groups:
         gid = g["DraftGroupId"]
         det = details.get(gid) or {}
-        game_type = ((det.get("contestType") or {}).get("gameType")) or ""
+        contests = contests_by_group.get(gid, [])
+        games = g.get("GameCount") or len(det.get("games") or [])
+        if slate_game_type(det, contests, games).strip().lower() != "classic":
+            continue
         start = parse_dk_time(det.get("minStartTime") or g.get("StartDateEst") or g.get("StartDate"))
         local, zone = eastern(start)
-        games = g.get("GameCount") or len(det.get("games") or [])
         suffix = (g.get("ContestStartTimeSuffix") or "").strip().strip("()").strip()
-        kind = game_type or ("Single game" if games == 1 else "Slate")
-        parts = [kind, f"{games} game{'s' if games != 1 else ''}"]
+        parts = [f"{games} game{'s' if games != 1 else ''}"]
         if local:
             parts.append(local.strftime("%a %-I:%M %p" if sys.platform != "win32" else "%a %#I:%M %p") + f" {zone}")
         if suffix:
@@ -698,10 +718,10 @@ def dk_slates():
         slates.append({
             "id": gid,
             "label": " · ".join(parts),
-            "game_type": game_type,
+            "game_type": "Classic",
             "games": games,
             "start": start.isoformat() if start else None,
-            "contests": contest_counts.get(gid, 0),
+            "contests": len(contests),
             "contest_type_id": g.get("ContestTypeId"),
             "main": suffix.lower() == "main",
         })

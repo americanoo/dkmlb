@@ -41,14 +41,14 @@ panel:
 - If Savant fails on a day, the pull stops with a message naming the day;
   the days that did load stay cached, so trying again is quick.
 
-**DraftKings slate** (same panel): pick one of today's MLB slates and click
+**DraftKings slate** (same panel): pick one of today's MLB Classic slates
+(Showdown, Tiers and other single-game formats are left out) and click
 **Load salaries**. No CSV download needed. The server reads the slate list
 and player list from the same public pages DraftKings' own lobby and lineup
 builder use (no login), and rebuilds them in the exact DKSalaries.csv
 layout, so matching, Value and "Build matchups from DK slate" work just as
-with an upload. The biggest Classic slate is preselected, and your last
-choice is remembered. Showdown slates load each player once at their flex
-salary (captains cost 1.5x). These pages aren't an official API. The server
+with an upload. The biggest slate is preselected, and your last choice is
+remembered. These pages aren't an official API. The server
 first sends a plain request, then a browser-style one, and if DraftKings'
 player API still refuses, it downloads the slate's own "Export to CSV" file
 instead. If every route is refused, the message names which ones and why;
