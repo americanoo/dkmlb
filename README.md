@@ -89,12 +89,46 @@ or AVG. Career and season rows are official totals and ignore filters.
 If MLB's stats site doesn't respond, the lookup still shows the day rows and
 says the totals didn't load; looking the player up again retries.
 
-**Batted balls: All / 95+ mph** (Batters tab). The 95+ setting matches a
-Savant search filtered to exit velo 95+: EV, LA, distance, barrels, HR, hits
-and field outs come from hard-hit balls in play only, while Pitches and K
-still count every pitch. "All batted balls" uses every ball in play, which
-makes HardHit% meaningful. Foul balls never count as batted balls, even
-though Statcast records exit velo on many of them.
+**Batted balls: All / 95+ mph** (Batters tab). The server pulls every pitch,
+not just hard-hit balls. "All batted balls" (the default) uses every ball in
+play, so HardHit% is meaningful and the HH count can be read against PA. The
+95+ setting narrows the contact stats (EV, LA, distance, barrels, HR, hits,
+field outs, batted-ball mix) to hard-hit balls, like a Savant search filtered
+to exit velo 95+, while volume, results and plate-discipline stats still
+count every pitch. Foul balls never count as batted balls, even though
+Statcast records exit velo on many of them.
+
+## Columns & formulas
+
+**Columns & formulas** (Batters and Pitchers tabs) opens the full stat
+catalog: about 90 stats per tab in seven groups: Slate & Vegas, Volume (Pitches,
+PA, AB, P/PA, IP), Results (H, 1B, 2B, 3B, TB, BB, IBB, K, HBP, SF, GIDP,
+AVG, OBP, SLG, OPS, ISO, BABIP, wOBA, xwOBA, xBA), Plate discipline (K%,
+BB%, K−BB%, Swing%, Whiff%, Contact%, Zone%, Z-Swing%, Chase%, CSW%,
+first-pitch swing/strike%), Contact quality (BBE, HH, HardHit%, HH/PA%,
+Barrels, Barrel%, Barrel/PA%, Avg/Max EV, EV90, LA, SweetSpot%, distance,
+HR, XBH, hits, FO), Batted-ball mix (GB/LD/FB/PU%, HR/FB, Pull%, Oppo%) and,
+for pitchers, Velo, Max Velo, Spin, K/9, BB/9, HR/9. Every rate has its raw
+count beside it (Swings and Whiffs next to Whiff%, Chases next to Chase%, GB
+next to GB%…). Tick the ones to show; hover a name for its definition.
+Choices are saved per tab.
+
+**Formula stats** turn any combination into your own column. Examples:
+`hh + barrels * 2 - k`, `hh / pa * 100`,
+`z(barrel_pct) + z(hh_per_pa) + itt_eff`. Formulas use the stat names shown
+in the reference list (click to insert), + − * / ^, parentheses,
+comparisons (1 if true, 0 if not), and min, max, avg, if, nz, round, abs,
+sqrt, ln, clamp. Pool functions compare a player with everyone on the tab:
+z (standard score), pctl (percentile 0–100), rank (1 = highest), scale (0–1).
+A missing stat leaves the result blank unless wrapped in nz(). The formula is
+checked as you type, with a preview of the highest values, and a formula can
+use earlier formula stats. Formula stats sort like any column and can be
+added to the rating.
+
+**Rating weights** now cover any stat: use "Add a stat to your rating" (any
+catalog stat or formula stat), flip ↑/↓ for whether higher or lower is
+better, and ✕ to drop one. The 10-point budget is unchanged, and weights set
+in the previous version carry over.
 
 ## Workflow
 

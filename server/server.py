@@ -52,8 +52,8 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
-DAY_CACHE = CACHE_DIR / "statcast-v2"
-OLD_DAY_CACHES = [CACHE_DIR / "statcast-v1"]
+DAY_CACHE = CACHE_DIR / "statcast-v3"
+OLD_DAY_CACHES = [CACHE_DIR / "statcast-v1", CACHE_DIR / "statcast-v2"]
 NAMES_FILE = CACHE_DIR / "names.json"
 
 # Columns the site reads, plus ids/game type used here for names and filters.
@@ -63,10 +63,12 @@ SITE_COLUMNS = [
     "outs_when_up", "inning", "hit_distance_sc", "launch_speed", "launch_angle",
     "effective_speed", "release_speed",
 ]
-# Extra columns for the Lookup tab's filters and wOBA/xwOBA/chase stats.
+# Extra columns for the full stat catalog (wOBA/xwOBA/xBA, zone and chase
+# stats, spray direction, spin) and the Lookup tab's filters.
 DETAIL_COLUMNS = [
     "inning_topbot", "n_thruorder_pitcher", "zone", "woba_value", "woba_denom",
     "estimated_woba_using_speedangle", "estimated_ba_using_speedangle",
+    "hc_x", "hc_y", "release_spin_rate",
 ]
 CACHE_COLUMNS = SITE_COLUMNS + DETAIL_COLUMNS + ["batter", "pitcher", "game_type", "game_pk",
                                                  "at_bat_number", "pitch_number"]
@@ -925,7 +927,7 @@ class Handler(SimpleHTTPRequestHandler):
                         set_progress(active=False)
                 df = sort_pitches(filter_game_types(df, flag(qs, "postseason")))
                 # Savant's league search is pitcher-typed, so its player_name is the pitcher.
-                payload = to_payload(df, role, seed_names(df, "pitcher"))
+                payload = to_payload(df, role, seed_names(df, "pitcher"), detail=True)
                 payload.update(start=start.isoformat(), end=end.isoformat(), role=role)
                 self.send_json(200, payload)
             elif path == "/api/players":

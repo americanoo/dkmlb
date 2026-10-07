@@ -89,6 +89,57 @@
     <label class="minsample"><span id="min-sample-label">Min BBE</span>
       <input type="number" id="min-sample" min="1" value="1">
     </label>
+    <button type="button" id="cols-toggle" class="ghost-btn" aria-expanded="false" aria-controls="cols-panel">Columns &amp; formulas</button>
+  </section>
+
+  <section id="cols-panel" class="cols-panel" hidden>
+    <div class="cols-head">
+      <h2 id="cols-title">Columns &amp; formulas</h2>
+      <span id="cols-count" class="hint"></span>
+      <div class="cols-actions">
+        <button type="button" class="ghost-btn" data-cols="default">Default columns</button>
+        <button type="button" class="ghost-btn" data-cols="all">Show every stat</button>
+        <button type="button" class="ghost-btn" data-cols="none">Hide every stat</button>
+        <button type="button" class="upload-btn as-button" id="cols-done">Done</button>
+      </div>
+    </div>
+    <p class="hint">Tick the stats to show. Hover a name for what it measures. Counts sit next to their rates
+      (HH beside HardHit%, Chases beside Chase%) so you can check them against PA.</p>
+    <div id="cols-groups" class="cols-groups"></div>
+
+    <div class="formula-box">
+      <h3>Your formula stats</h3>
+      <p class="hint">Combine any stats into your own column, e.g. <code>hh + barrels * 2</code>,
+        <code>hh / pa * 100</code> or <code>z(barrel_pct) + z(hh_per_pa) + itt_eff</code>. It appears in the table,
+        sorts like any stat, and can be added to your rating.</p>
+      <div id="formula-list"></div>
+      <form id="formula-form" class="formula-form" autocomplete="off">
+        <label class="ff-name"><span>Name</span><input id="ff-name" maxlength="40" placeholder="e.g. Power Score"></label>
+        <label class="ff-format"><span>Show as</span><select id="ff-format"></select></label>
+        <label class="ff-formula"><span>Formula</span>
+          <textarea id="ff-formula" rows="2" spellcheck="false" placeholder="e.g. hh + barrels * 2 - k"></textarea></label>
+        <div class="ff-actions">
+          <button type="submit" class="upload-btn as-button" id="ff-save">Add formula stat</button>
+          <button type="button" class="ghost-btn" id="ff-cancel" hidden>Cancel edit</button>
+        </div>
+        <p id="ff-check" class="sv-status" role="status"></p>
+      </form>
+      <details class="ff-help">
+        <summary>Stats and functions you can use</summary>
+        <p class="hint">Click a name to insert it. Operators: + − * / ^ ( ) and comparisons &gt; &lt; &gt;= &lt;= == != (1 if true, 0 if not).</p>
+        <div class="ff-funcs">
+          <code data-insert="min()">min(a, b, …)</code> <code data-insert="max()">max(a, b, …)</code> <code data-insert="avg()">avg(a, b, …)</code>
+          <code data-insert="if(, , )">if(test, a, b)</code> <code data-insert="nz()">nz(x)</code> <code data-insert="round(, 1)">round(x, digits)</code>
+          <code data-insert="abs()">abs</code> <code data-insert="sqrt()">sqrt</code> <code data-insert="ln()">ln</code> <code data-insert="clamp(, 0, 100)">clamp(x, lo, hi)</code>
+          <code data-insert="z()">z(stat)</code> <code data-insert="pctl()">pctl(stat)</code> <code data-insert="rank()">rank(stat)</code> <code data-insert="scale()">scale(stat)</code>
+        </div>
+        <p class="hint"><b>z</b> = standard score vs. everyone on this tab (0 = average), <b>pctl</b> = percentile 0–100,
+          <b>rank</b> = 1 for the highest, <b>scale</b> = 0–1 between lowest and highest. <b>nz(x)</b> turns a missing value into 0.
+          A missing stat makes the result blank unless you wrap it in nz().</p>
+        <input type="search" id="ff-search" placeholder="Find a stat…" aria-label="Find a stat">
+        <div id="ff-vars" class="ff-vars"></div>
+      </details>
+    </div>
   </section>
 
   <section id="vegas-panel" style="display:none">
@@ -171,6 +222,8 @@
   <script src="js/store.js"></script>
   <script src="js/csv.js"></script>
   <script src="js/stats.js"></script>
+  <script src="js/catalog.js"></script>
+  <script src="js/formula.js"></script>
   <script src="js/dk.js"></script>
   <script src="js/vegas.js"></script>
   <script src="js/app.js"></script>

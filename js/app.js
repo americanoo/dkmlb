@@ -4,96 +4,6 @@
   "use strict";
 
   /* ------------------------------------------------------------------ */
-  /* Column + weight configuration                                       */
-  /* ------------------------------------------------------------------ */
-
-  var BATTER_COLUMNS = [
-    { key: "name", label: "Player", type: "text" },
-    { key: "team", label: "Team", type: "text", dk: true },
-    { key: "position", label: "Pos", type: "text", dk: true },
-    { key: "salary", label: "Salary", type: "money", dk: true },
-    { key: "avgPoints", label: "DK Avg", type: "num1", dk: true },
-    { key: "rating", label: "Rating", type: "num1" },
-    { key: "value", label: "Value", type: "num2", dk: true },
-    { key: "itt_eff", label: "Imp Tot", type: "num1", vegas: true },
-    { key: "ou", label: "O/U", type: "num1", vegas: true },
-    { key: "ml", label: "ML", type: "ml", vegas: true },
-    { key: "bets", label: "Bets%", type: "pct", vegas: true },
-    { key: "handle", label: "Handle%", type: "pct", vegas: true },
-    { key: "pitches", label: "Pitches", type: "int" },
-    { key: "bbe", label: "BBE", type: "int" },
-    { key: "hh", label: "HH", type: "int" },
-    { key: "avg_ev", label: "Avg EV", type: "num1" },
-    { key: "max_ev", label: "Max EV", type: "num1" },
-    { key: "avg_la", label: "Avg LA", type: "num1" },
-    { key: "barrel_pct", label: "Barrel%", type: "pct" },
-    { key: "hardhit_pct", label: "HardHit%", type: "pct" },
-    { key: "sweetspot_pct", label: "SweetSpot%", type: "pct" },
-    { key: "avg_dist", label: "Avg Dist", type: "num0" },
-    { key: "hr", label: "HR", type: "int" },
-    { key: "xbh", label: "XBH", type: "int" },
-    { key: "hits", label: "Hits", type: "int" },
-    { key: "field_outs", label: "FO", type: "int" },
-    { key: "k", label: "K", type: "int" }
-  ];
-
-  var BATTER_WEIGHTS = [
-    { key: "barrel_pct", label: "Barrel%", weight: 0 },
-    { key: "hardhit_pct", label: "HardHit%", weight: 0 },
-    { key: "hh", label: "Hard-Hit Balls", weight: 0 },
-    { key: "avg_ev", label: "Avg EV", weight: 0 },
-    { key: "hr", label: "Home Runs", weight: 0 },
-    { key: "max_ev", label: "Max EV", weight: 0 },
-    { key: "xbh", label: "Extra-Base Hits", weight: 0 },
-    { key: "sweetspot_pct", label: "SweetSpot%", weight: 0 },
-    { key: "avg_dist", label: "Avg Distance", weight: 0 },
-    { key: "hits", label: "Hits", weight: 0 },
-    { key: "k", label: "Strikeouts", weight: 0, invert: true },
-    { key: "itt_eff", label: "Implied Team Total", weight: 0 },
-    { key: "bets", label: "Bets% on team", weight: 0 },
-    { key: "handle", label: "Handle% on team", weight: 0 }
-  ];
-
-  var PITCHER_COLUMNS = [
-    { key: "name", label: "Player", type: "text" },
-    { key: "team", label: "Team", type: "text", dk: true },
-    { key: "position", label: "Pos", type: "text", dk: true },
-    { key: "salary", label: "Salary", type: "money", dk: true },
-    { key: "avgPoints", label: "DK Avg", type: "num1", dk: true },
-    { key: "rating", label: "Rating", type: "num1" },
-    { key: "value", label: "Value", type: "num2", dk: true },
-    { key: "opp_itt", label: "Opp Imp Tot", type: "num1", vegas: true },
-    { key: "ou", label: "O/U", type: "num1", vegas: true },
-    { key: "ml", label: "ML", type: "ml", vegas: true },
-    { key: "bets", label: "Bets%", type: "pct", vegas: true },
-    { key: "handle", label: "Handle%", type: "pct", vegas: true },
-    { key: "pitches", label: "Pitches", type: "int" },
-    { key: "pa", label: "PA", type: "int" },
-    { key: "k_pct", label: "K%", type: "pct" },
-    { key: "bb_pct", label: "BB%", type: "pct" },
-    { key: "whiff_pct", label: "Whiff%", type: "pct" },
-    { key: "csw_pct", label: "CSW%", type: "pct" },
-    { key: "avg_velo", label: "Avg Velo", type: "num1" },
-    { key: "ev_against", label: "EV Against", type: "num1" },
-    { key: "hardhit_against_pct", label: "HardHit% Agn", type: "pct" },
-    { key: "hr_allowed", label: "HR Alwd", type: "int" },
-    { key: "hits_allowed", label: "Hits Alwd", type: "int" }
-  ];
-
-  var PITCHER_WEIGHTS = [
-    { key: "k_pct", label: "K%", weight: 0 },
-    { key: "whiff_pct", label: "Whiff%", weight: 0 },
-    { key: "csw_pct", label: "CSW%", weight: 0 },
-    { key: "ev_against", label: "EV Against", weight: 0, invert: true },
-    { key: "hardhit_against_pct", label: "HardHit% Against", weight: 0, invert: true },
-    { key: "hr_allowed", label: "HR Allowed", weight: 0, invert: true },
-    { key: "bb_pct", label: "BB%", weight: 0, invert: true },
-    { key: "avg_velo", label: "Avg Velo", weight: 0 },
-    { key: "opp_itt", label: "Opp Implied Total", weight: 0, invert: true },
-    { key: "ml", label: "Moneyline (win odds)", weight: 0, invert: true }
-  ];
-
-  /* ------------------------------------------------------------------ */
   /* State                                                               */
   /* ------------------------------------------------------------------ */
 
@@ -107,7 +17,8 @@
     search: "",
     slateOnly: false,
     minSample: { batters: 1, pitchers: 1 },
-    evFloor: loadPref("evFloor", 95),
+    /* 0 = every ball in play; 95 narrows the contact stats to hard-hit balls. */
+    evFloor: loadPref("evFloorV2", 0),
     api: false
   };
 
@@ -126,26 +37,111 @@
     } catch (e) { /* ignore */ }
   }
 
-  /* v3: weights are a shared 10-point budget per tab; the key bump
-     discards weight sets saved under earlier schemes. */
-  var WEIGHTS_KEY = "dkmlb_weights_v3_";
+  /* ------------------------------------------------------------------ */
+  /* Stat catalog, chosen columns, formula stats, rating weights         */
+  /* ------------------------------------------------------------------ */
+
+  var CUSTOM_FORMATS = [["num1", "1 decimal"], ["num2", "2 decimals"], ["num0", "Whole number"],
+    ["pct", "Percent"], ["avg3", ".000 (like AVG)"]];
+  var MY_FORMULAS = "My formulas";
+
+  var custom = { batters: loadCustom("batters"), pitchers: loadCustom("pitchers") };
+
+  function loadCustom(kind) {
+    var list = loadPref("custom_" + kind, []);
+    return Array.isArray(list)
+      ? list.filter(function (c) { return c && c.key && c.name && c.formula; })
+        .map(function (c) { return { key: c.key, name: c.name, formula: c.formula, format: c.format || "num2" }; })
+      : [];
+  }
+
+  function saveCustom(kind) {
+    savePref("custom_" + kind, custom[kind].map(function (c) {
+      return { key: c.key, name: c.name, formula: c.formula, format: c.format };
+    }));
+  }
+
+  function customDefs(kind) {
+    return custom[kind].map(function (c) {
+      return { key: c.key, label: c.name, type: c.format, group: MY_FORMULAS, desc: c.formula, custom: true };
+    });
+  }
+
+  function allStats(kind) {
+    return Catalog.stats[kind].concat(customDefs(kind));
+  }
+
+  function statDef(kind, key) {
+    return allStats(kind).filter(function (st) { return st.key === key; })[0] || null;
+  }
+
+  function ratable(st) {
+    return !st.text && !st.noFormula;
+  }
+
+  /* Names a formula may use: every numeric stat, plus formula stats listed
+     before it (a formula can build on an earlier one). */
+  function formulaVars(kind, upto) {
+    var vars = {};
+    Catalog.stats[kind].forEach(function (st) { if (ratable(st)) vars[st.key.toLowerCase()] = st.key; });
+    custom[kind].slice(0, upto === undefined ? custom[kind].length : upto)
+      .forEach(function (c) { vars[c.key.toLowerCase()] = c.key; });
+    return vars;
+  }
+
+  function applyCustom(kind, players) {
+    custom[kind].forEach(function (c, i) {
+      try {
+        Formula.apply(Formula.compile(c.formula, formulaVars(kind, i)), players, c.key);
+        c.error = null;
+      } catch (e) {
+        c.error = e.message;
+        players.forEach(function (p) { p[c.key] = null; });
+      }
+    });
+  }
+
+  var visibleCols = { batters: loadCols("batters"), pitchers: loadCols("pitchers") };
+
+  function loadCols(kind) {
+    var saved = loadPref("cols_" + kind, null);
+    return Array.isArray(saved) ? saved : Catalog.defaultColumns[kind].slice();
+  }
+
+  function saveCols(kind) {
+    savePref("cols_" + kind, visibleCols[kind]);
+  }
+
+  /* Weights are a shared 10-point budget per tab over a list of stats you
+     choose. v4 stores the list; v3 stored weights for a fixed list. */
+  var WEIGHTS_KEY = "dkmlb_weights_v4_";
+  var OLD_WEIGHTS_KEY = "dkmlb_weights_v3_";
   var WEIGHT_BUDGET = 10;
 
   var weights = {
-    batters: loadWeights("batters", BATTER_WEIGHTS),
-    pitchers: loadWeights("pitchers", PITCHER_WEIGHTS)
+    batters: loadWeights("batters"),
+    pitchers: loadWeights("pitchers")
   };
 
-  function loadWeights(kind, defaults) {
-    var list = defaults.map(function (d) { return Object.assign({}, d); });
-    try {
-      var saved = JSON.parse(localStorage.getItem(WEIGHTS_KEY + kind));
-      if (saved) {
-        list.forEach(function (w) {
-          if (typeof saved[w.key] === "number") w.weight = saved[w.key];
-        });
-      }
-    } catch (e) { /* ignore */ }
+  function defaultWeights(kind) {
+    return Catalog.defaultRated[kind].map(function (key) {
+      var def = statDef(kind, key);
+      return { key: key, weight: 0, invert: !!(def && def.lower) };
+    });
+  }
+
+  function loadWeights(kind) {
+    var list = null;
+    try { list = JSON.parse(localStorage.getItem(WEIGHTS_KEY + kind)); } catch (e) { /* ignore */ }
+    if (!Array.isArray(list)) {
+      list = defaultWeights(kind);
+      try {
+        var old = JSON.parse(localStorage.getItem(OLD_WEIGHTS_KEY + kind));
+        if (old) list.forEach(function (w) { if (typeof old[w.key] === "number") w.weight = old[w.key]; });
+      } catch (e) { /* ignore */ }
+    }
+    list = list.filter(function (w) { return w && typeof w.key === "string"; })
+      .map(function (w) { return { key: w.key, weight: +w.weight || 0, invert: !!w.invert }; });
     /* Enforce the budget even against hand-edited storage. */
     var spent = 0;
     list.forEach(function (w) {
@@ -160,9 +156,7 @@
   }
 
   function saveWeights(kind) {
-    var obj = {};
-    weights[kind].forEach(function (w) { obj[w.key] = w.weight; });
-    try { localStorage.setItem(WEIGHTS_KEY + kind, JSON.stringify(obj)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(WEIGHTS_KEY + kind, JSON.stringify(weights[kind])); } catch (e) { /* ignore */ }
   }
 
   var DATA_KEYS = ["batters", "pitchers", "dk", "vegas", "lookup"];
@@ -212,35 +206,25 @@
     return rows.filter(function (r) { return r.stand === hand; });
   }
 
-  /* With an EV floor set, batted-ball stats and history come from balls in
-     play at or above it (matching a Savant search filtered on exit velo),
-     while Pitches, PA and K still count every pitch the batter saw. */
-  function batterPlayers(rows) {
-    var all = Stats.aggregateBatters(rows);
+  /* With an EV floor set, the contact block and history use balls in play
+     at or above it (matching a Savant search filtered on exit velo), while
+     volume, results and plate-discipline stats count every pitch. */
+  function evFloorContact() {
     var floor = state.evFloor;
-    if (!floor) return all;
-    var hard = rows.filter(function (r) {
+    return function (r) {
       var ev = Stats.num(r.launch_speed);
-      return Stats.isBattedBall(r) && ev !== null && ev >= floor;
-    });
-    var byName = {};
-    all.forEach(function (p) { byName[p.name] = p; });
-    var players = Stats.aggregateBatters(hard);
-    players.forEach(function (p) {
-      var a = byName[p.name];
-      p.pitches = a.pitches;
-      p.pa = a.pa;
-      p.k = a.k;
-    });
-    return players;
+      return ev !== null && ev >= floor;
+    };
   }
 
   function rebuild(kind) {
     var s = state[kind];
     var rows = splitFilter(kind, s.rows);
-    s.players = kind === "batters" ? batterPlayers(rows) : Stats.aggregatePitchers(rows);
+    var contact = kind === "batters" && state.evFloor ? evFloorContact() : null;
+    s.players = Stats.aggregate(rows, { contact: contact });
     if (state.dk.length) DK.matchSalaries(s.players, state.dk);
     Vegas.attach(s.players, state.vegas, kind);
+    applyCustom(kind, s.players);
     Stats.computeRatings(s.players, weights[kind]);
     render();
   }
@@ -288,6 +272,8 @@
     document.getElementById("vegas-panel").style.display = isVegas ? "" : "none";
     document.getElementById("lookup-panel").style.display = isLookup ? "" : "none";
     document.querySelector(".controls").style.display = isVegas || isLookup ? "none" : "";
+    if (isVegas || isLookup) document.getElementById("cols-panel").hidden = true;
+    else renderColsPanel();
     if (isVegas) {
       renderVegas();
       return;
@@ -321,19 +307,48 @@
       v ? v + " Vegas team rows" : "no vegas data";
   }
 
+  /* Stats grouped for <select> menus: [[group, [defs]], ...]. */
+  function groupedStats(kind, filter) {
+    var groups = Catalog.groups.concat([MY_FORMULAS]);
+    var all = allStats(kind);
+    return groups.map(function (g) {
+      return [g, all.filter(function (st) { return st.group === g && filter(st); })];
+    }).filter(function (pair) { return pair[1].length; });
+  }
+
+  function recomputeRatings(kind) {
+    Stats.computeRatings(state[kind].players, weights[kind]);
+    renderTable(kind);
+  }
+
   function renderWeights(kind) {
     var panel = document.getElementById("weights-body");
     var html = '<div class="points-left">Points left: <b id="points-left">' +
       (WEIGHT_BUDGET - weightTotal(kind)) + "</b> / " + WEIGHT_BUDGET + "</div>";
     weights[kind].forEach(function (w, i) {
+      var def = statDef(kind, w.key);
+      var label = def ? def.label : w.key + " (removed)";
       html +=
         '<div class="weight-row">' +
-        '<label for="w-' + i + '">' + esc(w.label) + (w.invert ? ' <span class="inv" title="Lower is better">↓</span>' : "") + "</label>" +
+        '<label for="w-' + i + '" title="' + esc(def ? def.desc : "") + '">' + esc(label) + "</label>" +
+        '<button type="button" class="dir-btn' + (w.invert ? " on" : "") + '" data-dir="' + i + '" aria-pressed="' + w.invert +
+        '" title="' + (w.invert ? "Lower is better (click to flip)" : "Higher is better (click to flip)") + '">' + (w.invert ? "↓" : "↑") + "</button>" +
         '<input id="w-' + i + '" type="range" min="0" max="' + WEIGHT_BUDGET + '" step="1" value="' + w.weight + '" data-idx="' + i + '">' +
         '<span class="wval">' + w.weight + "</span>" +
+        '<button type="button" class="rm-btn" data-rm="' + i + '" title="Remove from rating" aria-label="Remove ' + esc(label) + ' from rating">✕</button>' +
         "</div>";
     });
+    var listed = {};
+    weights[kind].forEach(function (w) { listed[w.key] = true; });
+    var options = groupedStats(kind, function (st) { return ratable(st) && !listed[st.key]; });
+    html += '<label class="add-stat"><span>Add a stat to your rating</span><select id="add-weight"><option value="">Choose a stat…</option>' +
+      options.map(function (pair) {
+        return '<optgroup label="' + esc(pair[0]) + '">' + pair[1].map(function (st) {
+          return '<option value="' + esc(st.key) + '">' + esc(st.label) + "</option>";
+        }).join("") + "</optgroup>";
+      }).join("") + "</select></label>";
     panel.innerHTML = html;
+
     panel.querySelectorAll("input[type=range]").forEach(function (input) {
       input.addEventListener("input", function () {
         var idx = parseInt(input.getAttribute("data-idx"), 10);
@@ -342,13 +357,35 @@
         var allowed = Math.min(requested, WEIGHT_BUDGET - otherTotal);
         if (allowed !== requested) input.value = allowed;
         weights[kind][idx].weight = allowed;
-        input.nextElementSibling.textContent = allowed;
+        input.parentNode.querySelector(".wval").textContent = allowed;
         document.getElementById("points-left").textContent = WEIGHT_BUDGET - weightTotal(kind);
         saveWeights(kind);
-        var s = state[kind];
-        Stats.computeRatings(s.players, weights[kind]);
-        renderTable(kind);
+        recomputeRatings(kind);
       });
+    });
+    panel.querySelectorAll("[data-dir]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var w = weights[kind][+btn.getAttribute("data-dir")];
+        w.invert = !w.invert;
+        saveWeights(kind);
+        renderWeights(kind);
+        recomputeRatings(kind);
+      });
+    });
+    panel.querySelectorAll("[data-rm]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        weights[kind].splice(+btn.getAttribute("data-rm"), 1);
+        saveWeights(kind);
+        renderWeights(kind);
+        recomputeRatings(kind);
+      });
+    });
+    document.getElementById("add-weight").addEventListener("change", function () {
+      var def = statDef(kind, this.value);
+      if (!def) return;
+      weights[kind].push({ key: def.key, weight: 0, invert: !!def.lower });
+      saveWeights(kind);
+      renderWeights(kind);
     });
   }
 
@@ -375,21 +412,24 @@
   }
 
   function renderTable(kind) {
-    var cols = kind === "batters" ? BATTER_COLUMNS : PITCHER_COLUMNS;
     var s = state[kind];
     var players = visiblePlayers(kind);
     var hasDK = state.dk.length > 0;
     var hasVegas = state.vegas.length > 0;
-    var showCols = cols.filter(function (c) {
+    var shown = {};
+    visibleCols[kind].forEach(function (k) { shown[k] = true; });
+    var showCols = [{ key: "name", label: "Player", type: "text" }].concat(allStats(kind).filter(function (c) {
+      if (!shown[c.key]) return false;
       if (c.dk && !hasDK) return false;
       if (c.vegas && !hasVegas) return false;
       return true;
-    });
+    }));
 
     var html = "<thead><tr>";
     showCols.forEach(function (c) {
       var arrow = s.sortKey === c.key ? (s.sortDir === -1 ? " ▼" : " ▲") : "";
-      html += '<th data-key="' + c.key + '">' + esc(c.label) + arrow + "</th>";
+      html += '<th data-key="' + c.key + '"' + (c.desc ? ' title="' + esc(c.desc) + '"' : "") +
+        (c.custom ? ' class="custom-col"' : "") + ">" + esc(c.label) + arrow + "</th>";
     });
     html += "</tr></thead><tbody>";
 
@@ -1299,10 +1339,288 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Columns & formulas panel                                            */
+  /* ------------------------------------------------------------------ */
+
+  var formulaEdit = null; // index of the formula stat being edited
+
+  function statsTab() {
+    return state.tab === "batters" || state.tab === "pitchers" ? state.tab : null;
+  }
+
+  function setColsPanel(open) {
+    var panel = document.getElementById("cols-panel");
+    panel.hidden = !open;
+    document.getElementById("cols-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) renderColsPanel();
+  }
+
+  function renderColsPanel() {
+    var kind = statsTab();
+    var panel = document.getElementById("cols-panel");
+    if (!kind) { panel.hidden = true; return; }
+    if (panel.hidden) return;
+    document.getElementById("cols-title").textContent =
+      "Columns & formulas · " + (kind === "batters" ? "Batters" : "Pitchers");
+    var shown = {};
+    visibleCols[kind].forEach(function (k) { shown[k] = true; });
+    var all = allStats(kind);
+    document.getElementById("cols-count").textContent =
+      all.filter(function (st) { return shown[st.key]; }).length + " of " + all.length + " stats shown";
+    document.getElementById("cols-groups").innerHTML = groupedStats(kind, function () { return true; })
+      .map(function (pair) {
+        return '<fieldset class="col-group"><legend>' + esc(pair[0]) +
+          ' <button type="button" class="link-btn" data-group-on="' + esc(pair[0]) + '">all</button>' +
+          ' <button type="button" class="link-btn" data-group-off="' + esc(pair[0]) + '">none</button></legend>' +
+          pair[1].map(function (st) {
+            var note = st.dk ? " · needs DK salaries" : st.vegas ? " · needs Vegas data" : "";
+            return '<label class="col-check" title="' + esc((st.desc || "") + note) + '"><input type="checkbox" data-col="' +
+              esc(st.key) + '"' + (shown[st.key] ? " checked" : "") + "> " + esc(st.label) + "</label>";
+          }).join("") + "</fieldset>";
+      }).join("");
+    renderFormulaList(kind);
+    renderFormulaVars(kind);
+    var fmtSel = document.getElementById("ff-format");
+    if (!fmtSel.options.length) {
+      fmtSel.innerHTML = CUSTOM_FORMATS.map(function (f) {
+        return '<option value="' + f[0] + '">' + esc(f[1]) + "</option>";
+      }).join("");
+      fmtSel.value = "num1";
+    }
+  }
+
+  function setColumns(kind, keys) {
+    visibleCols[kind] = keys;
+    saveCols(kind);
+    renderTable(kind);
+    renderColsPanel();
+  }
+
+  function renderFormulaList(kind) {
+    var box = document.getElementById("formula-list");
+    if (!custom[kind].length) {
+      box.innerHTML = '<p class="hint">No formula stats on this tab yet.</p>';
+      return;
+    }
+    box.innerHTML = custom[kind].map(function (c, i) {
+      var fmtName = (CUSTOM_FORMATS.filter(function (f) { return f[0] === c.format; })[0] || ["", ""])[1];
+      return '<div class="formula-item' + (formulaEdit === i ? " editing" : "") + '"><span class="fi-name">' + esc(c.name) +
+        '</span><code class="fi-formula">' + esc(c.formula) + '</code><span class="muted fi-meta">' + esc(c.key) + " · " +
+        esc(fmtName) + "</span>" +
+        (c.error ? '<span class="fi-error">Not working: ' + esc(c.error) + "</span>" : "") +
+        '<span class="fi-actions"><button type="button" class="ghost-btn" data-edit="' + i + '">Edit</button>' +
+        '<button type="button" class="ghost-btn" data-del="' + i + '">Delete</button></span></div>';
+    }).join("");
+  }
+
+  function renderFormulaVars(kind) {
+    var q = document.getElementById("ff-search").value.trim().toLowerCase();
+    var upto = formulaEdit === null ? custom[kind].length : formulaEdit;
+    var allowed = formulaVars(kind, upto);
+    var groups = groupedStats(kind, function (st) {
+      if (!allowed[st.key.toLowerCase()]) return false;
+      return !q || st.key.toLowerCase().indexOf(q) !== -1 || st.label.toLowerCase().indexOf(q) !== -1;
+    });
+    document.getElementById("ff-vars").innerHTML = groups.length ? groups.map(function (pair) {
+      return '<div class="ff-group"><span class="ff-group-name">' + esc(pair[0]) + "</span>" + pair[1].map(function (st) {
+        return '<button type="button" class="var-chip" data-insert="' + esc(st.key) + '" title="' + esc(st.desc || "") + '"><code>' +
+          esc(st.key) + "</code> " + esc(st.label) + "</button>";
+      }).join("") + "</div>";
+    }).join("") : '<p class="hint">No stat matches “' + esc(q) + "”.</p>";
+  }
+
+  function insertIntoFormula(text) {
+    var ta = document.getElementById("ff-formula");
+    var start = ta.selectionStart || 0, end = ta.selectionEnd || 0;
+    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+    var paren = text.indexOf("(");
+    var caret = paren === -1 ? start + text.length : start + paren + 1;
+    ta.focus();
+    ta.setSelectionRange(caret, caret);
+    checkFormula();
+  }
+
+  /* Compile the formula being typed and preview it on the current players. */
+  function checkFormula() {
+    var kind = statsTab();
+    var out = document.getElementById("ff-check");
+    var text = document.getElementById("ff-formula").value;
+    if (!kind) return null;
+    if (!text.trim()) { setStatus(out, "", ""); return null; }
+    var compiled;
+    try {
+      compiled = Formula.compile(text, formulaVars(kind, formulaEdit === null ? custom[kind].length : formulaEdit));
+    } catch (e) {
+      setStatus(out, e.message + (typeof e.pos === "number" ? " (at character " + (e.pos + 1) + ")" : ""), "error");
+      return null;
+    }
+    var players = state[kind].players;
+    if (!players.length) {
+      setStatus(out, "The formula is valid. Pull or upload data to see its values.", "ok");
+      return compiled;
+    }
+    Formula.apply(compiled, players, "__preview");
+    var fmtType = document.getElementById("ff-format").value;
+    var withValue = players.filter(function (p) { return p.__preview !== null; });
+    var top = withValue.slice().sort(function (a, b) { return b.__preview - a.__preview; }).slice(0, 3)
+      .map(function (p) { return p.name + " " + fmt(p.__preview, fmtType); });
+    players.forEach(function (p) { delete p.__preview; });
+    if (withValue.length) {
+      setStatus(out, "Works: " + withValue.length + " of " + players.length + " players get a value. Highest: " +
+        top.join(", ") + ".", "ok");
+    } else {
+      setStatus(out, "The formula is valid, but no player has every stat it needs. Wrap stats that can be blank in nz().", "error");
+    }
+    return compiled;
+  }
+
+  function resetFormulaForm() {
+    formulaEdit = null;
+    document.getElementById("ff-name").value = "";
+    document.getElementById("ff-formula").value = "";
+    document.getElementById("ff-format").value = "num1";
+    document.getElementById("ff-save").textContent = "Add formula stat";
+    document.getElementById("ff-cancel").hidden = true;
+    setStatus(document.getElementById("ff-check"), "", "");
+  }
+
+  function customKey(kind, name) {
+    var base = "c_" + (name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "stat");
+    var key = base, n = 2;
+    var taken = function (k) { return custom[kind].some(function (c) { return c.key === k; }) || statDef(kind, k); };
+    while (taken(key)) key = base + "_" + n++;
+    return key;
+  }
+
+  function initColsPanel() {
+    document.getElementById("cols-toggle").addEventListener("click", function () {
+      setColsPanel(document.getElementById("cols-panel").hidden);
+    });
+    document.getElementById("cols-done").addEventListener("click", function () { setColsPanel(false); });
+    document.querySelectorAll("[data-cols]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var kind = statsTab();
+        if (!kind) return;
+        var mode = btn.getAttribute("data-cols");
+        var keys = mode === "default"
+          ? Catalog.defaultColumns[kind].concat(custom[kind].map(function (c) { return c.key; }))
+          : mode === "all" ? allStats(kind).map(function (st) { return st.key; }) : [];
+        setColumns(kind, keys);
+      });
+    });
+    var groupsBox = document.getElementById("cols-groups");
+    groupsBox.addEventListener("change", function (ev) {
+      var kind = statsTab();
+      var key = ev.target.getAttribute("data-col");
+      if (!kind || !key) return;
+      var keys = visibleCols[kind].filter(function (k) { return k !== key; });
+      if (ev.target.checked) keys.push(key);
+      setColumns(kind, keys);
+    });
+    groupsBox.addEventListener("click", function (ev) {
+      var kind = statsTab();
+      var on = ev.target.getAttribute("data-group-on"), off = ev.target.getAttribute("data-group-off");
+      if (!kind || (!on && !off)) return;
+      var groupKeys = allStats(kind).filter(function (st) { return st.group === (on || off); })
+        .map(function (st) { return st.key; });
+      var keys = visibleCols[kind].filter(function (k) { return groupKeys.indexOf(k) === -1; });
+      setColumns(kind, on ? keys.concat(groupKeys) : keys);
+    });
+
+    var form = document.getElementById("formula-form");
+    ["ff-formula", "ff-format"].forEach(function (id) {
+      document.getElementById(id).addEventListener("input", checkFormula);
+    });
+    document.getElementById("ff-search").addEventListener("input", function () {
+      var kind = statsTab();
+      if (kind) renderFormulaVars(kind);
+    });
+    document.getElementById("cols-panel").addEventListener("click", function (ev) {
+      var chip = ev.target.closest ? ev.target.closest("[data-insert]") : null;
+      if (chip) insertIntoFormula(chip.getAttribute("data-insert"));
+    });
+    document.getElementById("ff-cancel").addEventListener("click", function () {
+      resetFormulaForm();
+      renderColsPanel();
+    });
+    document.getElementById("formula-list").addEventListener("click", function (ev) {
+      var kind = statsTab();
+      if (!kind) return;
+      var edit = ev.target.getAttribute("data-edit"), del = ev.target.getAttribute("data-del");
+      if (edit !== null) {
+        var c = custom[kind][+edit];
+        formulaEdit = +edit;
+        document.getElementById("ff-name").value = c.name;
+        document.getElementById("ff-formula").value = c.formula;
+        document.getElementById("ff-format").value = c.format;
+        document.getElementById("ff-save").textContent = "Save changes";
+        document.getElementById("ff-cancel").hidden = false;
+        renderColsPanel();
+        checkFormula();
+        document.getElementById("ff-formula").focus();
+      } else if (del !== null) {
+        var gone = custom[kind][+del];
+        if (!confirm("Delete the formula stat “" + gone.name + "”? Formulas that use " + gone.key + " will stop working.")) return;
+        custom[kind].splice(+del, 1);
+        visibleCols[kind] = visibleCols[kind].filter(function (k) { return k !== gone.key; });
+        weights[kind] = weights[kind].filter(function (w) { return w.key !== gone.key; });
+        saveCustom(kind);
+        saveCols(kind);
+        saveWeights(kind);
+        resetFormulaForm();
+        rebuild(kind);
+        renderColsPanel();
+      }
+    });
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var kind = statsTab();
+      if (!kind) return;
+      var out = document.getElementById("ff-check");
+      var name = document.getElementById("ff-name").value.trim();
+      var formula = document.getElementById("ff-formula").value.trim();
+      var format = document.getElementById("ff-format").value;
+      if (!name) {
+        setStatus(out, "Give the stat a name; it becomes the column header.", "error");
+        document.getElementById("ff-name").focus();
+        return;
+      }
+      var clash = custom[kind].some(function (c, i) { return i !== formulaEdit && c.name.toLowerCase() === name.toLowerCase(); });
+      if (clash) {
+        setStatus(out, "You already have a formula stat named “" + name + "”.", "error");
+        return;
+      }
+      if (!checkFormula()) {
+        if (!formula) setStatus(out, "Type a formula.", "error");
+        return;
+      }
+      if (formulaEdit !== null) {
+        var c = custom[kind][formulaEdit];
+        c.name = name;
+        c.formula = formula;
+        c.format = format;
+      } else {
+        var key = customKey(kind, name);
+        custom[kind].push({ key: key, name: name, formula: formula, format: format });
+        visibleCols[kind].push(key);
+        saveCols(kind);
+      }
+      saveCustom(kind);
+      resetFormulaForm();
+      rebuild(kind);
+      renderColsPanel();
+      setStatus(out, "Saved “" + name + "”. It's in the table and can be added to your rating.", "ok");
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Uploads + controls                                                  */
   /* ------------------------------------------------------------------ */
 
   var KEEP_COLUMNS = [
+    "inning_topbot", "n_thruorder_pitcher", "zone", "woba_value", "woba_denom",
+    "estimated_woba_using_speedangle", "estimated_ba_using_speedangle", "hc_x", "hc_y",
+    "release_spin_rate", "opp_player",
     "pitch_type", "pitch_name", "game_date", "player_name", "events", "description",
     "stand", "p_throws", "home_team", "away_team", "bb_type", "balls", "strikes",
     "outs_when_up", "inning", "hit_distance_sc", "launch_speed", "launch_angle",
@@ -1356,6 +1674,7 @@
     document.querySelectorAll(".tab").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.tab = btn.getAttribute("data-tab");
+        if (formulaEdit !== null) resetFormulaForm();
         document.querySelectorAll(".tab").forEach(function (b) { b.classList.toggle("active", b === btn); });
         updateSplitButtons();
         render();
@@ -1385,8 +1704,7 @@
     });
     document.getElementById("reset-weights").addEventListener("click", function () {
       var kind = state.tab;
-      var defaults = kind === "batters" ? BATTER_WEIGHTS : PITCHER_WEIGHTS;
-      weights[kind] = defaults.map(function (d) { return Object.assign({}, d); });
+      weights[kind] = defaultWeights(kind);
       saveWeights(kind);
       Stats.computeRatings(state[kind].players, weights[kind]);
       render();
@@ -1408,7 +1726,7 @@
     document.querySelectorAll(".ev-btn[data-floor]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.evFloor = parseInt(btn.getAttribute("data-floor"), 10) || 0;
-        savePref("evFloor", state.evFloor);
+        savePref("evFloorV2", state.evFloor);
         state.batters.expanded = {};
         updateSplitButtons();
         rebuild("batters");
@@ -1442,6 +1760,7 @@
     document.getElementById("storage-backend").textContent = Store.backend;
     initSavantPanel();
     initLookup();
+    initColsPanel();
     detectServer();
     updateSplitButtons();
     rebuildAll();
