@@ -48,9 +48,11 @@ builder use (no login), and rebuilds them in the exact DKSalaries.csv
 layout, so matching, Value and "Build matchups from DK slate" work just as
 with an upload. The biggest Classic slate is preselected, and your last
 choice is remembered. Showdown slates load each player once at their flex
-salary (captains cost 1.5x). These pages aren't an official API, so if
-DraftKings changes them the site says so; the **DK Salaries CSV** upload
-keeps working either way.
+salary (captains cost 1.5x). These pages aren't an official API. The server
+first sends a plain request, then a browser-style one, and if DraftKings'
+player API still refuses, it downloads the slate's own "Export to CSV" file
+instead. If every route is refused, the message names which ones and why;
+the **DK Salaries CSV** upload keeps working either way.
 
 The **Lookup** tab looks up any **player** (as a batter or pitcher) or any
 **team** (batting or pitching) without downloading a season of pitch data.

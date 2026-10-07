@@ -531,9 +531,17 @@ def load_totals(kind, key, side):
 
 DK_WWW = "https://www.draftkings.com"
 DK_API = "https://api.draftkings.com"
-DK_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                            "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-              "Accept": "application/json"}
+# Sent only when a plain request is refused: a browser-like session that has
+# first visited the lobby, so it carries DraftKings' cookies.
+DK_BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.draftkings.com/",
+    "Origin": "https://www.draftkings.com",
+}
+BLOCKED_STATUSES = {401, 403, 429}
 DK_CSV_HEADER = ["Position", "Name + ID", "Name", "ID", "Roster Position", "Salary",
                  "Game Info", "TeamAbbrev", "AvgPointsPerGame"]
 PITCHER_POSITIONS = {"SP", "RP", "P"}
@@ -555,18 +563,64 @@ except Exception:  # no tz database (some Windows installs): times show in UTC
     EASTERN = None
 
 
-def dk_get(url, params=None):
-    try:
-        resp = requests.get(url, params=params, headers=DK_HEADERS, timeout=20)
-    except requests.RequestException:
-        raise ApiError(502, "DraftKings couldn't be reached. Check your connection and try again.")
-    if resp.status_code >= 400:
-        raise ApiError(502, f"DraftKings returned an error ({resp.status_code}). Try again in a minute, "
-                            "or upload the salary CSV instead.")
+class DkFail(Exception):
+    """One DraftKings request that didn't produce usable data; reason is short."""
+
+
+dk_browser_lock = threading.Lock()
+dk_browser = None
+
+
+def _browser_session():
+    global dk_browser
+    with dk_browser_lock:
+        if dk_browser is None:
+            session = requests.Session()
+            session.headers.update(DK_BROWSER_HEADERS)
+            try:
+                session.get(f"{DK_WWW}/lobby", timeout=20,
+                            headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"})
+            except requests.RequestException:
+                pass  # cookies are a bonus; the session still sends browser headers
+            dk_browser = session
+        return dk_browser
+
+
+def dk_fetch(url, params=None):
+    """A DraftKings response, trying a plain request first (what open-source
+    DraftKings clients send) and a browser-like session if that's refused."""
+    reason = "no response"
+    for attempt in ("plain", "browser"):
+        try:
+            if attempt == "plain":
+                resp = requests.get(url, params=params, timeout=20)
+            else:
+                resp = _browser_session().get(url, params=params, timeout=20)
+        except requests.RequestException:
+            reason = "couldn't connect"
+            continue
+        if resp.status_code in BLOCKED_STATUSES:
+            reason = f"refused ({resp.status_code})"
+            continue
+        if resp.status_code >= 400:
+            raise DkFail(f"error {resp.status_code}")
+        return resp
+    raise DkFail(reason)
+
+
+def dk_json(url, params=None):
+    resp = dk_fetch(url, params)
     try:
         return resp.json()
     except ValueError:
-        raise ApiError(502, "DraftKings sent an unreadable response. Upload the salary CSV instead.")
+        raise DkFail("unreadable response")
+
+
+def dk_get(url, params=None):
+    try:
+        return dk_json(url, params)
+    except DkFail as exc:
+        raise ApiError(502, f"DraftKings {exc}. Try again in a minute, or upload the salary CSV instead.")
 
 
 def parse_dk_time(value):
@@ -611,8 +665,8 @@ def game_info(name, start):
 
 def _slate_details(group_id):
     try:
-        return dk_get(f"{DK_API}/draftgroups/v1/{group_id}").get("draftGroup") or {}
-    except ApiError:
+        return dk_json(f"{DK_API}/draftgroups/v1/{group_id}").get("draftGroup") or {}
+    except DkFail:
         return {}
 
 
@@ -635,7 +689,8 @@ def dk_slates():
         local, zone = eastern(start)
         games = g.get("GameCount") or len(det.get("games") or [])
         suffix = (g.get("ContestStartTimeSuffix") or "").strip().strip("()").strip()
-        parts = [game_type or "Slate", f"{games} game{'s' if games != 1 else ''}"]
+        kind = game_type or ("Single game" if games == 1 else "Slate")
+        parts = [kind, f"{games} game{'s' if games != 1 else ''}"]
         if local:
             parts.append(local.strftime("%a %-I:%M %p" if sys.platform != "win32" else "%a %#I:%M %p") + f" {zone}")
         if suffix:
@@ -647,19 +702,20 @@ def dk_slates():
             "games": games,
             "start": start.isoformat() if start else None,
             "contests": contest_counts.get(gid, 0),
+            "contest_type_id": g.get("ContestTypeId"),
             "main": suffix.lower() == "main",
         })
     slates.sort(key=lambda sl: (sl["start"] or "", -(sl["games"] or 0)))
     return slates
 
 
-def dk_salaries_csv(group_id):
-    data = dk_get(f"{DK_API}/draftgroups/v1/draftgroups/{group_id}/draftables")
+def _salaries_from_draftables(group_id):
+    data = dk_json(f"{DK_API}/draftgroups/v1/draftgroups/{group_id}/draftables")
     competitions = {c.get("competitionId"): c for c in data.get("competitions") or []}
     try:
-        listing = dk_get(f"{DK_WWW}/lineup/getavailableplayers", {"draftGroupId": group_id})
+        listing = dk_json(f"{DK_WWW}/lineup/getavailableplayers", {"draftGroupId": group_id})
         ppg = {p.get("pid"): p.get("ppg") for p in listing.get("playerList") or []}
-    except ApiError:
+    except DkFail:
         ppg = {}  # DK Avg is a nice-to-have; salaries still load
 
     # Showdown lists each player twice (captain at 1.5x salary, flex):
@@ -671,12 +727,14 @@ def dk_salaries_csv(group_id):
             continue
         if key not in best or p["salary"] < best[key]["salary"]:
             best[key] = p
+    if not best:
+        raise DkFail("no players listed")
 
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(DK_CSV_HEADER)
     for p in sorted(best.values(), key=lambda x: (-x["salary"], x.get("displayName") or "")):
-        comp = p.get("competition") or competitions.get((p.get("competition") or {}).get("competitionId")) or {}
+        comp = p.get("competition") or competitions.get(p.get("competitionId")) or {}
         position = p.get("position") or ""
         name = p.get("displayName") or " ".join(filter(None, [p.get("firstName"), p.get("lastName")]))
         draftable_id = p.get("draftableId")
@@ -692,6 +750,42 @@ def dk_salaries_csv(group_id):
             ppg.get(p.get("playerId")) or "",
         ])
     return out.getvalue(), len(best)
+
+
+def count_csv_players(text):
+    """Players in a DKSalaries.csv (the table starts at the row naming Position and Salary)."""
+    rows = list(csv.reader(io.StringIO(text)))
+    for i, row in enumerate(rows):
+        if "Position" in row and "Salary" in row:
+            col = row.index("Position")
+            return sum(1 for r in rows[i + 1:] if len(r) > col and r[col].strip())
+    return 0
+
+
+def _salaries_from_csv_export(group_id, contest_type_id):
+    """DraftKings' own "Export to CSV" file for the slate."""
+    resp = dk_fetch(f"{DK_WWW}/lineup/getavailableplayerscsv",
+                    {"contestTypeId": contest_type_id, "draftGroupId": group_id})
+    text = resp.content.decode("utf-8-sig", errors="replace")
+    count = count_csv_players(text)
+    if not count:
+        raise DkFail("didn't return a salary file")
+    return text, count
+
+
+def dk_salaries_csv(group_id, contest_type_id=None):
+    reasons = []
+    try:
+        return _salaries_from_draftables(group_id)
+    except DkFail as exc:
+        reasons.append(f"player API {exc}")
+    if contest_type_id:
+        try:
+            return _salaries_from_csv_export(group_id, contest_type_id)
+        except DkFail as exc:
+            reasons.append(f"CSV export {exc}")
+    raise ApiError(502, "DraftKings didn't send salaries (" + "; ".join(reasons) + "). "
+                        "Upload the salary CSV from DraftKings instead; that always works.")
 
 
 # --------------------------------------------------------------------------
@@ -832,10 +926,8 @@ class Handler(SimpleHTTPRequestHandler):
                 group_id = (qs.get("id") or [""])[0]
                 if not group_id.isdigit():
                     raise ApiError(400, "Pick a slate first.")
-                text, count = dk_salaries_csv(int(group_id))
-                if not count:
-                    raise ApiError(502, "DraftKings returned no players for that slate. It may have locked or "
-                                        "been removed; refresh the slate list.")
+                ct = (qs.get("ct") or [""])[0]
+                text, count = dk_salaries_csv(int(group_id), int(ct) if ct.isdigit() else None)
                 self.send_json(200, {"csv": text, "count": count, "id": int(group_id)})
             elif path == "/api/team":
                 team = (qs.get("team") or [""])[0].upper()
