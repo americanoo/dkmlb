@@ -239,7 +239,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
 
   const STORE = 'nba-slate-board-v1';
   const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { return {}; } })();
-  const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ preset: S.preset, weights: S.weights, strength: S.strength, slate: S.slate, cols: S.cols ? [...S.cols] : saved.cols })); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ preset: S.preset, weights: S.weights, strength: S.strength, slate: S.slate, cols: S.cols ? [...S.cols] : saved.cols, colsV: S.cols ? COLS_VERSION : saved.colsV })); } catch (e) {} };
 
   const S = {
     slate: Math.min(saved.slate ?? 0, DATA.slates.length - 1),
@@ -414,11 +414,19 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     { k: 'blk', l: 'BLK', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Blocks per game. Worth 2 DK points each.' },
     { k: 'tov', l: 'TOV', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Turnovers per game. Cost 0.5 DK points each.' },
     { k: 'tpm', l: '3PM', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Threes made per game. +0.5 DK bonus each on top of the 3 points.' },
-    { k: 'fga', l: 'FGA', g: 'Box score per game', num: 1, f: fmt1, t: 'Field-goal attempts per game.' },
-    { k: 'fta', l: 'FTA', g: 'Box score per game', num: 1, f: fmt1, t: 'Free-throw attempts per game.' },
-    { k: 'fg_pct', l: 'FG%', g: 'Box score per game', num: 1, f: fmt1, t: 'Field-goal percentage, season.' },
-    { k: 'tp_pct', l: '3P%', g: 'Box score per game', num: 1, f: fmt1, t: 'Three-point percentage, season.' },
-    { k: 'ft_pct', l: 'FT%', g: 'Box score per game', num: 1, f: fmt1, t: 'Free-throw percentage, season.' },
+    { k: 'fga', l: 'FGA', g: 'Shot volume', d: 1, num: 1, f: fmt1, t: 'Field-goal attempts per game, season.' },
+    { k: 'tpa', l: '3PA', g: 'Shot volume', d: 1, num: 1, f: fmt1, t: 'Three-point attempts per game, season.' },
+    { k: 'fta', l: 'FTA', g: 'Shot volume', d: 1, num: 1, f: fmt1, t: 'Free-throw attempts per game, season.' },
+    { k: 'fga_l5', l: 'FGA L5', g: 'Shot volume', d: 1, num: 1, f: fmt1, t: 'Field-goal attempts per game, last 5 games. Compare with FGA to spot a role change.' },
+    { k: 'tpa_l5', l: '3PA L5', g: 'Shot volume', d: 1, num: 1, f: fmt1, t: 'Three-point attempts per game, last 5 games.' },
+    { k: 'fta_l5', l: 'FTA L5', g: 'Shot volume', num: 1, f: fmt1, t: 'Free-throw attempts per game, last 5 games.' },
+    { k: 'fga36', l: 'FGA/36', g: 'Shot volume', num: 1, f: fmt1, t: 'Field-goal attempts per 36 minutes: shot volume independent of minutes.' },
+    { k: 'tpa36', l: '3PA/36', g: 'Shot volume', num: 1, f: fmt1, t: 'Three-point attempts per 36 minutes.' },
+    { k: 'fta36', l: 'FTA/36', g: 'Shot volume', num: 1, f: fmt1, t: 'Free-throw attempts per 36 minutes.' },
+    { k: 'tpa_rate', l: '3PA rate', g: 'Shot volume', num: 1, f: pctTxt, t: 'Share of his field-goal attempts that are threes.' },
+    { k: 'fg_pct', l: 'FG%', g: 'Shooting %', d: 1, num: 1, f: fmt1, t: 'Field-goal percentage, season.' },
+    { k: 'tp_pct', l: '3P%', g: 'Shooting %', d: 1, num: 1, f: fmt1, t: 'Three-point percentage, season.' },
+    { k: 'ft_pct', l: 'FT%', g: 'Shooting %', num: 1, f: fmt1, t: 'Free-throw percentage, season.' },
     { k: 'pts36', l: 'PTS', g: 'Per 36 min', num: 1, f: fmt1, t: 'Points per 36 minutes: what he does when on the floor, useful when his minutes are about to change.' },
     { k: 'reb36', l: 'REB', g: 'Per 36 min', num: 1, f: fmt1, t: 'Rebounds per 36 minutes.' },
     { k: 'ast36', l: 'AST', g: 'Per 36 min', num: 1, f: fmt1, t: 'Assists per 36 minutes.' },
@@ -434,14 +442,16 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     { k: 'rating', l: 'Rating', g: 'Rating', d: 1, num: 1, t: 'Model rating out of 100 with the weights above, minus the risk penalty. Slate-relative, not a projection.' },
     { k: 'tier', l: 'Tier', g: 'Rating', d: 1, t: '85+ top-rated, 70–84 strong, 55–69 context-dependent, under 55 lower priority.' },
     ...COMPS.map((k) => ({ k: 'c_' + k, l: COMP[k][1], g: 'Rating', num: 1, comp: 1, t: COMP[k][0] + ' score, 0–100 vs. this slate: ' + COMP[k][2] })),
-    { k: 'gp', l: 'GP', g: 'Sample', num: 1, t: 'Games played in the season the Szn columns use.' },
+    { k: 'last', l: 'Last game', g: 'Sample', d: 1, f: (v) => (v ? new Date(v + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'), t: "Date of his most recent game played. An old date means his L5 / L10 numbers are stale (injury, trade, or end-of-season rest)." },
+    { k: 'gp', l: 'GP', g: 'Sample', d: 1, num: 1, t: 'Games played in the season the Szn columns use.' },
     { k: 'season', l: 'Season', g: 'Sample', t: 'Season the Szn columns use: the latest with 10+ games played.' },
     { k: 'gp_cur', l: "GP '27", g: 'Sample', num: 1, t: 'Games played this season (2026-27). Until there are 10, projections lean on last season.' },
     { k: 'why', l: 'Why', g: 'Notes', d: 1, t: 'Strongest parts of the rating under the current weights.' },
     { k: 'risk', l: 'Risks', g: 'Notes', d: 1, t: 'Injury tags, blowout exposure, minutes volatility and late-news notes.' },
   ];
   const DEFAULT_COLS = COLUMNS.filter((c) => c.d).map((c) => c.k);
-  S.cols = new Set(saved.cols || DEFAULT_COLS);
+  const COLS_VERSION = 3;
+  S.cols = new Set(saved.cols && saved.colsV === COLS_VERSION ? saved.cols : DEFAULT_COLS);
   S.open = new Set();
   const visibleCols = () => COLUMNS.filter((c) => c.fixed || (S.cols.has(c.k) && (c.k !== 'c_leverage' || levOn())));
   const sortVal = (r, k) => {
@@ -459,7 +469,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
   let rankOf = new Map();
 
   function saveCols() {
-    try { const o = JSON.parse(localStorage.getItem(STORE)) || {}; o.cols = [...S.cols]; localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) {}
+    try { const o = JSON.parse(localStorage.getItem(STORE)) || {}; o.cols = [...S.cols]; o.colsV = COLS_VERSION; localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) {}
   }
 
   function drawColPicker() {
@@ -603,7 +613,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     logBox.append(el('h4', 'gl-h', `Last ${r.log.length} games`));
     const t = el('table', 'log-t');
     const h = el('tr');
-    ['Date', '', 'Opp', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', '3PM', 'FG', 'FT', 'DK pts', 'Szn'].forEach((x, i) => h.append(el('th', i >= 3 && i <= 13 ? 'num' : '', x)));
+    ['Date', '', 'Opp', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', 'DK pts', 'Szn'].forEach((x, i) => h.append(el('th', i >= 3 && i <= 13 ? 'num' : '', x)));
     const th = el('thead'); th.append(h);
     const tb = el('tbody');
     const target = 5 * r.salary / 1000;

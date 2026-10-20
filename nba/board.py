@@ -122,7 +122,8 @@ def player_stats(p, dvp):
         "sims": len(sims),
     }
     log = [[et_date(g["date"]), "@" if g["away"] else "vs", g["opp"], round(g["MIN"]), g["PTS"], g["REB"], g["AST"],
-            g["STL"], g["BLK"], g["TO"], g["3PM"], f"{g['FGM']}-{g['FGA']}", f"{g['FTM']}-{g['FTA']}", round(g["FP"], 2),
+            g["STL"], g["BLK"], g["TO"], f"{g['FGM']}-{g['FGA']}", f"{g['3PM']}-{g['3PA']}", f"{g['FTM']}-{g['FTA']}",
+            round(g["FP"], 2),
             season_label(g["season"])] for g in l10]
     return {
         "ha": "Home" if p["home"] else "Away", "time": p["game_time"], "dk_avg": p["dk_avg_fp"],
@@ -137,7 +138,11 @@ def player_stats(p, dvp):
         "hit5": round(100 * sum(g["FP"] >= target5 for g in l20) / len(l20)),
         "pts": r1(mean(szn, "PTS")), "reb": r1(mean(szn, "REB")), "ast": r1(mean(szn, "AST")),
         "stl": r1(mean(szn, "STL")), "blk": r1(mean(szn, "BLK")), "tov": r1(mean(szn, "TO")),
-        "tpm": r1(mean(szn, "3PM")), "fga": r1(mean(szn, "FGA")), "fta": r1(mean(szn, "FTA")),
+        "tpm": r1(mean(szn, "3PM")), "fga": r1(mean(szn, "FGA")), "tpa": r1(mean(szn, "3PA")),
+        "fta": r1(mean(szn, "FTA")), "fga_l5": r1(mean(l5, "FGA")), "tpa_l5": r1(mean(l5, "3PA")),
+        "fta_l5": r1(mean(l5, "FTA")), "fga36": per36(lambda g: g["FGA"]), "tpa36": per36(lambda g: g["3PA"]),
+        "fta36": per36(lambda g: g["FTA"]),
+        "tpa_rate": pct(sum(g["3PA"] for g in szn), tot_fga),
         "fg_pct": pct(tot_fgm, tot_fga), "tp_pct": pct(sum(g["3PM"] for g in szn), sum(g["3PA"] for g in szn)),
         "ft_pct": pct(sum(g["FTM"] for g in szn), sum(g["FTA"] for g in szn)),
         "pts36": per36(lambda g: g["PTS"]), "reb36": per36(lambda g: g["REB"]), "ast36": per36(lambda g: g["AST"]),
@@ -149,6 +154,7 @@ def player_stats(p, dvp):
         "dvp": d[0] if d else None, "dvp_rank": f"{d[2]}/{d[3]}" if d and len(d) > 2 else None,
         "dvp_n": d[1] if d else None, "dvp_group": group,
         "gp": len(szn), "season": season_label(season), "gp_cur": p.get("gp_current", 0),
+        "last": played[0]["date"][:10] if played else None,
         "math": math, "log": log,
     }
 
