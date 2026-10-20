@@ -52,6 +52,20 @@ def show_weights(w, args, leverage_ok):
         print("LEVERAGE unavailable (no ownership projections): weight moved to projection/ceiling/minutes/role")
 
 
+def print_absences(absences):
+    if not absences:
+        print("\nno absences that change teammates' baselines")
+        return
+    print("\nabsences (minutes vacated vs. teammates' recent baselines):")
+    for a in absences:
+        if a["vacated_min"] < 1:
+            print(f"  {a['team']} {a['player']} out: already reflected in teammates' recent games")
+            continue
+        gains = ", ".join(f"{n} +{m:g} min / {g:+g} FP" + (" [wowy]" if emp else "")
+                          for n, m, g, emp in a["gainers"][:4]) or "no meaningful shift"
+        print(f"  {a['team']} {a['player']} out, {a['vacated_min']:g} min: {gains}")
+
+
 def print_players(rated, top):
     print(f"\n{'player':24} {'sal':>6} {'median':>6} {'ceil':>6} {'rating':>6} {'tier':17} {'own':>5}  positives | risks")
     for p in rated[:top]:
@@ -82,7 +96,8 @@ def write_log(rated, weights, args, draft_group):
     date = rated[0]["game_date"] if rated else "unknown"
     path = os.path.join(LOG_DIR, f"{date}_{draft_group}_{args.preset}.csv")
     fields = ["game_date", "draft_group", "preset", "weights", "ceiling_pct", "risk_strength", "name", "dk_id", "espn_id", "event_id", "team",
-              "opp", "salary", "positions", "dk_status", "injury", "proj_min", "min_sd_l10", "proj_fp", "ceiling",
+              "opp", "salary", "positions", "dk_status", "injury", "proj_min", "min_sd", "min_bump",
+              "base_proj_fp", "fp_bump", "proj_fp", "ceiling",
               "own", "rating", "raw_rating", "risk_penalty", "tier"] + [f"c_{k}" for k in ratings.COMPONENTS]
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -109,6 +124,10 @@ def main():
     ap.add_argument("--lineups", type=int, default=3)
     ap.add_argument("--min-diff", type=int, default=2, help="players each lineup must differ by")
     ap.add_argument("--top", type=int, default=40, help="players to print")
+    ap.add_argument("--assume-out", action="append", default=[], metavar="NAME",
+                    help="treat a player as out (late-news scenario); repeatable")
+    ap.add_argument("--assume-in", action="append", default=[], metavar="NAME",
+                    help="treat a player listed as out as playing; repeatable")
     ap.add_argument("--no-log", action="store_true")
     args = ap.parse_args()
     if not 0 <= args.risk_strength <= 15:
@@ -116,7 +135,7 @@ def main():
 
     ownership = load_ownership(args.ownership) if args.ownership else None
     dg = args.draft_group or dk_nba.pick_draft_group()
-    players = dk_nba.build(dg)
+    players, absences = dk_nba.build(dg, set(args.assume_out), set(args.assume_in))
 
     # Leverage needs ownership for every rateable player; partial data would be fabricated by omission.
     rateable = [p for p in players if p.get("proj_fp", 0) > 0]
@@ -131,6 +150,7 @@ def main():
 
     print(f"draft group {dg}: {len(rated)} rated players of {len(players)}")
     show_weights(weights, args, leverage_ok)
+    print_absences(absences)
     print_players(rated, args.top)
 
     pool = rated

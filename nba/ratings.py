@@ -114,7 +114,7 @@ def simulate(p, n=SIMS):
     samples = p.get("_rate_samples") or [p["fp_per_min"]]
     centre = sum(samples) / len(samples)
     scale = p["fp_per_min"] / centre if centre else 1.0
-    sd = max(p.get("min_sd_l10", 0.0), 2.0)
+    sd = max(p.get("min_sd", 0.0), 2.0)
     out = []
     for _ in range(n):
         minutes = min(max(rng.gauss(p["proj_min"], sd), 0.0), 48.0)
@@ -166,19 +166,20 @@ def rate_players(players, weights, ceiling_pct=85, risk_strength=10.0, ownership
             pct_ranks(col(lambda p: p["ceiling"])),
             pct_ranks(col(lambda p: p["ceiling"] / p["salary"])))],
         # Certainty folded in: a stable 34 beats an uncertain 28-36 with the same median.
-        "minutes": pct_ranks(col(lambda p: p["proj_min"] - 0.5 * p.get("min_sd_l10", 0))),
+        "minutes": pct_ranks(col(lambda p: p["proj_min"] - 0.5 * p.get("min_sd", 0))),
         "value": pct_by_group(col(lambda p: p["proj_fp"] / (p["salary"] / 1000)), sal_tiers),
     }
     # ROLE, within position group. Usage already contains FGA/FTA/TOV, so shot attempts aren't
     # counted again; AST and REB per minute stand in for potential assists and rebound chances
     # (tracking data lives on stats.nba.com, which blocks cloud IPs).
-    usage = pct_by_group(col(lambda p: p["usage_per_min"]), pos_groups)
+    # Projected usage includes any share inherited from absent teammates.
+    usage = pct_by_group(col(lambda p: p["usage_per_min"] + p.get("usage_bump", 0)), pos_groups)
     role_parts = [
         (0.40, usage),
         (0.20, pct_by_group(col(lambda p: p["ast_per_min"]), pos_groups)),
         (0.20, pct_by_group(col(lambda p: p["reb_per_min"]), pos_groups)),
         (0.10, pct_by_group(col(lambda p: p["stocks_per_min"]), pos_groups)),
-        (0.10, pct_ranks(col(lambda p: p["usage_l10"] - p["usage_per_min"]))),  # role change
+        (0.10, pct_ranks(col(lambda p: p["usage_l10"] + p.get("usage_bump", 0) - p["usage_per_min"]))),  # role change
     ]
     comps["role"] = [sum(w * part[i] for w, part in role_parts) for i in range(len(pool))]
 
@@ -225,10 +226,12 @@ def explain(p, weights, season_started):
     strong = sorted((k for k in COMPONENTS if c[k] is not None and c[k] >= 70 and weights[k] > 0),
                     key=lambda k: weights[k] * c[k], reverse=True)
     positives = [f"{LABELS[k]} {c[k]:.0f}" for k in strong[:3]]
+    if p.get("fp_bump", 0) >= 2:
+        positives.append(f"+{p['min_bump']:g} min / +{p['fp_bump']:g} FP with {', '.join(p['bump_from'])} out")
 
     risks = [reason for reason, _ in p["risk_flags"]]
     if c["minutes"] <= 25:
-        risks.append(f"minutes {p['proj_min']:.0f} (sd {p.get('min_sd_l10', 0):.0f})")
+        risks.append(f"minutes {p['proj_min']:.0f} (sd {p.get('min_sd', 0):.0f})")
     if c["reliability"] <= 25:
         risks.append("thin or stale sample")
     if season_started and p.get("gp_current", 0) == 0:
@@ -238,8 +241,12 @@ def explain(p, weights, season_started):
     raw = p["raw_rating"] or 1
     if c["leverage"] is not None and weights["leverage"] * c["leverage"] / 100 > 0.25 * raw:
         notes.append("rating leans on leverage")
-    if p.get("min_sd_l10", 0) >= 6:
-        notes.append(f"volatile minutes (sd {p['min_sd_l10']:.0f})")
+    if p.get("min_sd", 0) >= 6:
+        notes.append(f"volatile minutes (sd {p['min_sd']:.0f})")
+    if p.get("fp_bump", 0) >= 0.15 * p["proj_fp"]:
+        notes.append(f"{p['fp_bump'] / p['proj_fp']:.0%} of projection is from absences; rotation unconfirmed")
+    for name, gain in p.get("if_out", []):
+        notes.append(f"late news: +{gain:g} FP if {name} sits")
     if p.get("stocks_fp_share", 0) >= 0.25:
         notes.append(f"{p['stocks_fp_share']:.0%} of FP from steals/blocks")
     return positives, risks, notes

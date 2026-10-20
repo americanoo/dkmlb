@@ -19,9 +19,13 @@ import json
 import re
 import statistics
 import sys
+import time
 import unicodedata
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+
+import injuries
 
 UA = {"User-Agent": "Mozilla/5.0"}
 DK_CONTESTS = "https://www.draftkings.com/lobby/getcontests?sport=NBA"
@@ -33,16 +37,24 @@ ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/
 CLASSIC_GAME_TYPE = 70
 # DK team abbreviation -> ESPN team abbreviation, where they differ.
 DK_TO_ESPN = {"GSW": "GS", "NOP": "NO", "NYK": "NY", "SAS": "SA", "UTA": "UTAH", "WAS": "WSH"}
+ESPN_TO_DK = {v: k for k, v in DK_TO_ESPN.items()}
 
 # DK NBA classic scoring.
 DK_PTS = {"PTS": 1.0, "3PM": 0.5, "REB": 1.25, "AST": 1.5, "STL": 2.0, "BLK": 2.0, "TO": -0.5}
 DD_BONUS, TD_BONUS = 1.5, 3.0
 
 
-def get(url, as_json=True):
+def get(url, as_json=True, tries=3):
     req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        body = r.read().decode("utf-8-sig")
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body = r.read().decode("utf-8-sig")
+            break
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == tries - 1:
+                raise
+            time.sleep(2 ** attempt)
     return json.loads(body) if as_json else body
 
 
@@ -138,10 +150,13 @@ def parse_gamelog(data):
                 fgm, fga = split_made_att(row["FG"])
                 tpm, _ = split_made_att(row["3PT"])
                 _, fta = split_made_att(row["FT"])
+                meta = events.get(ev["eventId"], {})
+                team = meta.get("team", {}).get("abbreviation", "")
                 games.append({
-                    "date": events.get(ev["eventId"], {}).get("gameDate", ""),
+                    "date": meta.get("gameDate", ""),
                     "event_id": ev["eventId"],
                     "season": season_end,
+                    "team": ESPN_TO_DK.get(team, team),
                     "MIN": float(row["MIN"]), "PTS": int(row["PTS"]), "3PM": tpm,
                     "REB": int(row["REB"]), "AST": int(row["AST"]), "STL": int(row["STL"]),
                     "BLK": int(row["BLK"]), "TO": int(row["TO"]), "FGA": fga, "FTA": fta,
@@ -202,11 +217,10 @@ def summarize(games, current_season=None):
 
 def load_odds(date):
     """Vegas lines from ESPN's scoreboard (DraftKings is ESPN's odds provider), keyed by DK team."""
-    espn_to_dk = {v: k for k, v in DK_TO_ESPN.items()}
     out = {}
     for ev in get(ESPN_SCOREBOARD.format(date=date)).get("events", []):
         comp = ev["competitions"][0]
-        teams = {c["homeAway"]: espn_to_dk.get(c["team"]["abbreviation"], c["team"]["abbreviation"])
+        teams = {c["homeAway"]: ESPN_TO_DK.get(c["team"]["abbreviation"], c["team"]["abbreviation"])
                  for c in comp["competitors"]}
         odds = (comp.get("odds") or [{}])[0]
         total, home_spread = odds.get("overUnder"), odds.get("spread")
@@ -219,7 +233,8 @@ def load_odds(date):
     return out
 
 
-def build(draft_group):
+def build(draft_group, assume_out=(), assume_in=()):
+    """Enriched slate players plus a summary of injury redistributions."""
     players = load_slate(draft_group)
     teams = sorted({p["team"] for p in players})
     with ThreadPoolExecutor(8) as ex:
@@ -238,18 +253,20 @@ def build(draft_group):
             return {**p, "espn_id": "", "injury": "", "note": "no ESPN match"}
         p = {**p, **match}
         try:
-            p.update(summarize(load_gamelog(p["espn_id"]), current_season))
+            games = load_gamelog(p["espn_id"])
+            p.update(summarize(games, current_season))
+            p["_games"] = games
         except Exception as e:  # one bad player shouldn't sink the slate
             p["note"] = f"gamelog error: {e}"
-        if p["dk_status"] == "OUT" or p["injury"] == "Out":
-            p["proj_fp"] = 0.0
-        if p.get("proj_fp"):
-            p["value"] = round(p["proj_fp"] / (p["salary"] / 1000), 2)
         return p
 
     with ThreadPoolExecutor(8) as ex:
         out = list(ex.map(enrich, players))
-    return sorted(out, key=lambda p: p.get("proj_fp", 0), reverse=True)
+    absences = injuries.apply_absences(out, assume_out, assume_in)
+    for p in out:
+        if p.get("proj_fp"):
+            p["value"] = round(p["proj_fp"] / (p["salary"] / 1000), 2)
+    return sorted(out, key=lambda p: p.get("proj_fp", 0), reverse=True), absences
 
 
 def main():
@@ -259,7 +276,7 @@ def main():
     args = ap.parse_args()
 
     dg = args.draft_group or pick_draft_group()
-    rows = build(dg)
+    rows, _ = build(dg)
     print(f"draft group {dg}: {len(rows)} players\n")
     hdr = f"{'player':24} {'pos':10} {'team':4} {'opp':4} {'sal':>6} {'pMIN':>5} {'FP/m':>5} {'USG/m':>5} {'DD%':>4} {'proj':>5} {'val':>5}  status"
     print(hdr)
