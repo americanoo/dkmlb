@@ -17,6 +17,7 @@ import csv
 import io
 import json
 import re
+import statistics
 import sys
 import unicodedata
 import urllib.request
@@ -27,6 +28,7 @@ DK_CONTESTS = "https://www.draftkings.com/lobby/getcontests?sport=NBA"
 DK_PLAYERS_CSV = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId={gt}&draftGroupId={dg}"
 ESPN_ROSTER = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team}/roster"
 ESPN_GAMELOG = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{id}/gamelog"
+ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={date}"
 
 CLASSIC_GAME_TYPE = 70
 # DK team abbreviation -> ESPN team abbreviation, where they differ.
@@ -73,8 +75,9 @@ def load_slate(draft_group):
     text = get(DK_PLAYERS_CSV.format(gt=CLASSIC_GAME_TYPE, dg=draft_group), as_json=False)
     players = []
     for row in csv.DictReader(io.StringIO(text)):
-        home_away = row["Game Info"].split()[0]  # e.g. "OKC@SAS"
+        home_away, date, clock, _ = row["Game Info"].split()  # "OKC@SAS 10/20/2026 09:30PM ET"
         away, home = home_away.split("@")
+        month, day, year = date.split("/")
         players.append({
             "name": row["Name"],
             "dk_id": row["ID"],
@@ -83,6 +86,9 @@ def load_slate(draft_group):
             "team": row["TeamAbbrev"],
             "opp": home if row["TeamAbbrev"] == away else away,
             "home": row["TeamAbbrev"] == home,
+            "game": home_away,
+            "game_date": year + month + day,
+            "game_time": clock,
             "dk_avg_fp": float(row["AvgPointsPerGame"] or 0),
             "dk_status": row["Status"],
             "starting": row["Starting"],
@@ -134,6 +140,8 @@ def parse_gamelog(data):
                 _, fta = split_made_att(row["FT"])
                 games.append({
                     "date": events.get(ev["eventId"], {}).get("gameDate", ""),
+                    "event_id": ev["eventId"],
+                    "season": season_end,
                     "MIN": float(row["MIN"]), "PTS": int(row["PTS"]), "3PM": tpm,
                     "REB": int(row["REB"]), "AST": int(row["AST"]), "STL": int(row["STL"]),
                     "BLK": int(row["BLK"]), "TO": int(row["TO"]), "FGA": fga, "FTA": fta,
@@ -143,7 +151,7 @@ def parse_gamelog(data):
     return games, season_end
 
 
-def summarize(games):
+def summarize(games, current_season=None):
     played = [g for g in games if g["MIN"] > 0]
     if not played:
         return {}
@@ -153,6 +161,12 @@ def summarize(games):
     def avg(rows, key):
         return sum(r[key] for r in rows) / len(rows)
 
+    def per_min(rows, f):
+        return sum(f(g) for g in rows) / sum(g["MIN"] for g in rows)
+
+    def usage(g):
+        return g["FGA"] + 0.44 * g["FTA"] + g["TO"]
+
     mins = sum(g["MIN"] for g in played)
     l5, l10 = played[:5], played[:10]
     # Minutes drive NBA projections; lean on recent games because roles shift.
@@ -160,20 +174,49 @@ def summarize(games):
     # FP/min is more stable, so weight the season more heavily.
     fp_per_min = 0.3 * (sum(g["FP"] for g in l10) / sum(g["MIN"] for g in l10)) + \
         0.7 * (sum(g["FP"] for g in played) / mins)
-    usage = sum(g["FGA"] + 0.44 * g["FTA"] + g["TO"] for g in played) / mins
     dd_rate = sum(sum(g[k] >= 10 for k in ("PTS", "REB", "AST", "STL", "BLK")) >= 2
                   for g in played) / len(played)
+    stocks_pm = per_min(played, lambda g: g["STL"] + g["BLK"])
     return {
         "gp": len(played),
+        "gp_current": sum(g["season"] == current_season for g in played),
         "min_season": round(avg(played, "MIN"), 1),
         "min_l5": round(avg(l5, "MIN"), 1),
+        "min_sd_l10": round(statistics.pstdev([g["MIN"] for g in l10]), 1),
         "proj_min": round(proj_min, 1),
         "fp_per_min": round(fp_per_min, 3),
         "fppg": round(avg(played, "FP"), 1),
-        "usage_per_min": round(usage, 3),
+        "usage_per_min": round(per_min(played, usage), 3),
+        "usage_l10": round(per_min(l10, usage), 3),
+        "ast_per_min": round(per_min(played, lambda g: g["AST"]), 3),
+        "reb_per_min": round(per_min(played, lambda g: g["REB"]), 3),
+        "stocks_per_min": round(stocks_pm, 3),
+        # Share of FP from steals + blocks, the most volatile DK stats.
+        "stocks_fp_share": round(2 * stocks_pm / fp_per_min, 2) if fp_per_min > 0 else 0,
         "dd_rate": round(dd_rate, 2),
         "proj_fp": round(proj_min * fp_per_min, 1),
+        # Per-game FP/min from recent real-minutes games, for ceiling simulation.
+        "_rate_samples": [g["FP"] / g["MIN"] for g in played[:30] if g["MIN"] >= 10],
     }
+
+
+def load_odds(date):
+    """Vegas lines from ESPN's scoreboard (DraftKings is ESPN's odds provider), keyed by DK team."""
+    espn_to_dk = {v: k for k, v in DK_TO_ESPN.items()}
+    out = {}
+    for ev in get(ESPN_SCOREBOARD.format(date=date)).get("events", []):
+        comp = ev["competitions"][0]
+        teams = {c["homeAway"]: espn_to_dk.get(c["team"]["abbreviation"], c["team"]["abbreviation"])
+                 for c in comp["competitors"]}
+        odds = (comp.get("odds") or [{}])[0]
+        total, home_spread = odds.get("overUnder"), odds.get("spread")
+        for side, team in teams.items():
+            line = {"event_id": ev["id"], "game_total": total, "team_spread": None, "implied_total": None}
+            if total is not None and home_spread is not None:
+                spread = home_spread if side == "home" else -home_spread
+                line.update(team_spread=spread, implied_total=round(total / 2 - spread / 2, 1))
+            out[team] = line
+    return out
 
 
 def build(draft_group):
@@ -181,14 +224,21 @@ def build(draft_group):
     teams = sorted({p["team"] for p in players})
     with ThreadPoolExecutor(8) as ex:
         rosters = dict(zip(teams, ex.map(load_roster, teams)))
+    odds = {}
+    for date in sorted({p["game_date"] for p in players}):
+        odds.update(load_odds(date))
+    year, month = int(players[0]["game_date"][:4]), int(players[0]["game_date"][4:6])
+    current_season = year + 1 if month >= 8 else year  # ESPN labels a season by its end year
 
     def enrich(p):
+        p = {**p, **odds.get(p["team"], {"event_id": "", "game_total": None,
+                                          "team_spread": None, "implied_total": None})}
         match = rosters[p["team"]].get(norm_name(p["name"]))
         if not match:
             return {**p, "espn_id": "", "injury": "", "note": "no ESPN match"}
         p = {**p, **match}
         try:
-            p.update(summarize(load_gamelog(p["espn_id"])))
+            p.update(summarize(load_gamelog(p["espn_id"]), current_season))
         except Exception as e:  # one bad player shouldn't sink the slate
             p["note"] = f"gamelog error: {e}"
         if p["dk_status"] == "OUT" or p["injury"] == "Out":
@@ -225,9 +275,9 @@ def main():
         print(f"\nno projection ({len(unmatched)}): {', '.join(unmatched)}")
 
     if args.csv:
-        keys = sorted({k for p in rows for k in p})
+        keys = sorted({k for p in rows for k in p if not k.startswith("_")})
         with open(args.csv, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=keys)
+            w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
             w.writeheader()
             w.writerows(rows)
 
