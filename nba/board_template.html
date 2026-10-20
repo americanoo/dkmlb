@@ -1,0 +1,509 @@
+<title>NBA Slate Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Same system as the MLB Slate Board: condensed uppercase display over a plain sans,
+   court-green accent, one dense table as the main view. */
+:root{
+  --ground:#F2F4F1; --surface:#FFFFFF; --sunk:#E7EBE6; --line:#D5DBD4;
+  --ink:#15201A; --muted:#5B6A61; --faint:#8A978F;
+  --accent:#1E6B47; --accent-soft:#D9EBDF;
+  --good:#237A4B; --good-bg:#DCF0E3; --warn:#9A6412; --warn-bg:#F6E9CF;
+  --bad:#A8332F; --bad-bg:#F6DEDB; --none-bg:#E6E9E6;
+  --edit-bg:#FFF3C9; --edit-line:#E0B84A;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",-apple-system,"Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --ground:#0F1512; --surface:#161E1A; --sunk:#1D2722; --line:#2A3630;
+  --ink:#E3EAE5; --muted:#9AAAA0; --faint:#6F7F76;
+  --accent:#5CC08A; --accent-soft:#1D3528;
+  --good:#6FD39B; --good-bg:#183324; --warn:#E3B05A; --warn-bg:#35291A;
+  --bad:#F08A80; --bad-bg:#3A1F1D; --none-bg:#232C27;
+  --edit-bg:#3A3217; --edit-line:#9C7F2E;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --ground:#0F1512; --surface:#161E1A; --sunk:#1D2722; --line:#2A3630;
+  --ink:#E3EAE5; --muted:#9AAAA0; --faint:#6F7F76;
+  --accent:#5CC08A; --accent-soft:#1D3528;
+  --good:#6FD39B; --good-bg:#183324; --warn:#E3B05A; --warn-bg:#35291A;
+  --bad:#F08A80; --bad-bg:#3A1F1D; --none-bg:#232C27;
+  --edit-bg:#3A3217; --edit-line:#9C7F2E;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.45 var(--body);font-variant-numeric:tabular-nums}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--ground)}
+.wrap{max-width:none;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);border-bottom:1px solid var(--line)}
+header.top .wrap{padding-block:0}
+.bar{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;padding-block:14px 8px}
+h1{font:700 30px/1 var(--display);letter-spacing:.01em;margin:0;text-transform:uppercase}
+h1 span{color:var(--accent)}
+.stamp{color:var(--muted);font-size:12.5px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-block:0 10px}
+.chip{font:600 14px/1 var(--display);letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 11px;border-radius:4px;cursor:pointer}
+.chip small{font:500 12px var(--body);color:var(--muted);text-transform:none;letter-spacing:0;margin-left:5px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--ground)}
+.chip[aria-pressed="true"] small{color:inherit;opacity:.85}
+nav.tabs{display:flex;gap:2px;overflow-x:auto}
+nav.tabs button{font:600 16px/1 var(--display);letter-spacing:.05em;text-transform:uppercase;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:10px 12px 9px;cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,th:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+section.panel{padding-top:18px}
+.tools{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:12px}
+.tools input[type=search],.tools select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:7px 9px}
+.tools input[type=search]{width:min(220px,100%)}
+.tools label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
+.tools input[type=checkbox]{accent-color:var(--accent)}
+.btn{font:500 13px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:7px 11px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.count{color:var(--muted);font-size:13px;margin-left:auto}
+.note{color:var(--muted);font-size:13px;max-width:82ch;margin:0 0 12px}
+.scroll{overflow:auto;max-height:max(360px,calc(100vh - 250px));background:var(--surface);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:5px 8px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:0}
+th{font:600 12.5px/1.1 var(--display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);background:var(--sunk);position:sticky;top:0;z-index:2;cursor:pointer;user-select:none;padding-block:9px}
+th.num,td.num{text-align:right}
+th[aria-sort]::after{content:" \25BE";color:var(--accent)}
+th[aria-sort="ascending"]::after{content:" \25B4"}
+th.comp{color:var(--faint)}
+th:first-child,td.sticky{position:sticky;left:0}
+th:first-child{z-index:3}
+td.sticky{z-index:1;background:var(--surface)}
+tbody tr:hover td{background:var(--ground)}
+td.name{font-weight:600}
+.pos{color:var(--muted);font-size:12px;margin-left:6px;font-weight:400}
+.rk{display:inline-block;min-width:2.2em;color:var(--faint);font-weight:400;font-size:12px}
+.dim{color:var(--faint)}
+td.txt{max-width:34ch;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+td.wrap{white-space:normal;min-width:20ch;max-width:52ch;font-size:12.5px;line-height:1.35}
+.up{color:var(--good);font-weight:600}
+.tag{display:inline-block;font:600 11.5px/1 var(--display);letter-spacing:.05em;text-transform:uppercase;padding:4px 6px 3px;border-radius:3px;margin:0 4px 2px 0;white-space:nowrap}
+.t-good{background:var(--good-bg);color:var(--good)} .t-warn{background:var(--warn-bg);color:var(--warn)}
+.t-bad{background:var(--bad-bg);color:var(--bad)} .t-none{background:var(--none-bg);color:var(--muted)}
+.t-strong{background:var(--accent-soft);color:var(--ink)}
+.rating{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end;font-weight:600}
+.rating i{display:block;width:54px;height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.rating i b{display:block;height:100%;background:var(--accent)}
+.cs{font-size:12.5px;color:var(--muted)}
+.cs.hi{color:var(--good);font-weight:600}
+.cs.lo{color:var(--bad)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:12.5px;margin:10px 0 0}
+.empty{padding:24px;color:var(--muted);text-align:center;white-space:normal}
+/* rating weights */
+details.dsec{background:var(--surface);border:1px solid var(--line);border-radius:6px;margin-bottom:12px}
+details.dsec>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:11px 14px}
+details.dsec>summary::-webkit-details-marker{display:none}
+details.dsec>summary::before{content:"\25B8";color:var(--muted);font-size:12px;transition:transform .15s}
+details.dsec[open]>summary::before{transform:rotate(90deg)}
+.ds-t{font:700 16px/1.1 var(--display);letter-spacing:.05em;text-transform:uppercase}
+.ds-h{color:var(--muted);font-size:13px}
+.ds-b{padding:0 14px 14px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.wt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:4px 28px}
+.wt{display:grid;grid-template-columns:minmax(0,1fr) 7ch;grid-template-areas:"l n" "r r" "s s";gap:2px 10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.wt label{grid-area:l;font-size:13.5px;font-weight:500}
+.wt input[type=number]{grid-area:n;font:700 15px/1 var(--display);width:100%;text-align:right;color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:4px;padding:5px 7px}
+.wt input[type=range]{grid-area:r;width:100%;accent-color:var(--accent)}
+.wt small{grid-area:s;color:var(--muted);font-size:11.5px;line-height:1.3}
+.wt.changed input[type=number]{background:var(--edit-bg);border-color:var(--edit-line)}
+.wt.off{opacity:.55}
+.wt-foot{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:space-between;margin-top:12px}
+.wt-foot .note{margin:0}
+/* lineups and injuries */
+.c-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:14px;margin-bottom:14px}
+.c-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px 14px;min-width:0}
+.c-card h3{font:700 17px/1 var(--display);letter-spacing:.05em;text-transform:uppercase;margin:0 0 6px}
+.lu-sub{color:var(--muted);font-size:12.5px;margin:0 0 8px}
+.lu-sub b{color:var(--ink)}
+.lu-t{font-size:13px}
+.lu-t td,.lu-t th{padding:3px 8px 3px 0;border:0;position:static;background:none;cursor:default}
+.lu-t th{padding-block:3px}
+.lu-notes{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.lu-notes b{color:var(--ink);font-weight:600}
+.plain td,.plain th{position:static}
+.plain th{cursor:default}
+@media (max-width:560px){h1{font-size:24px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="top"><div class="wrap">
+  <div class="bar"><h1>NBA Slate Board <span id="hdate"></span></h1><div class="stamp" id="stamp"></div></div>
+  <div class="row" id="slates" role="group" aria-label="Slate"></div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-players" aria-selected="true" data-p="players">Players</button>
+    <button role="tab" id="tab-lineups" aria-selected="false" data-p="lineups">Lineups</button>
+    <button role="tab" id="tab-injuries" aria-selected="false" data-p="injuries">Injuries</button>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <section class="panel" id="p-players">
+    <details class="dsec" id="wts"><summary><span class="ds-t">Rating weights</span><span class="ds-h" id="wts-sum"></span></summary>
+      <div class="ds-b">
+        <p class="note">Weights always total <b>100</b>: move one and the others rescale to make room. Each stat is scored 0–100 against this slate, and the rating is their weighted sum minus the risk penalty. Ratings and the table update as you move.</p>
+        <div class="presets" id="presets" role="group" aria-label="Contest preset"></div>
+        <div class="wt-grid" id="wt-grid"></div>
+        <div class="wt-foot"><p class="note" id="wt-note"></p><button class="btn danger" id="wt-reset">Reset to preset</button></div>
+      </div>
+    </details>
+    <div class="tools">
+      <input type="search" id="q" placeholder="Search player or team" aria-label="Search players">
+      <select id="f-pos" aria-label="Position"><option value="">All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select>
+      <select id="f-game" aria-label="Game"><option value="">All games</option></select>
+      <label><input type="checkbox" id="f-q"> Hide questionable</label>
+      <label><input type="checkbox" id="f-bump"> Only injury bumps</label>
+      <label><input type="checkbox" id="f-comps"> Show stat scores</label>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="scroll"><table id="t-players"></table></div>
+    <div class="legend">
+      <span><span class="tag t-good">Top-rated</span>85+</span><span><span class="tag t-strong">Strong</span>70–84</span><span><span class="tag t-none">Context</span>55–69</span><span><span class="tag t-none" style="opacity:.6">Lower</span>under 55</span>
+      <span><b>Median</b> = projected DK points; <b>Ceil</b> = estimated 85th-percentile outcome; <b>Inj +</b> = DK points added because a teammate is out.</span>
+    </div>
+  </section>
+
+  <section class="panel" id="p-lineups" hidden>
+    <p class="note">Legal DraftKings classic lineups (PG, SG, SF, PF, C, G, F, UTIL; $50,000 cap; 2+ games), each differing by at least 2 players. Built when the model ran, with the default GPP weights: changing the weights above re-rates players but doesn't rebuild these.</p>
+    <div class="c-grid" id="lineups"></div>
+  </section>
+
+  <section class="panel" id="p-injuries" hidden>
+    <div class="c-grid">
+      <div class="c-card"><h3>Ruled out</h3><p class="note">Minutes each player leaves behind, measured against his team's last 10 games, and who picks up DK points. "Already reflected" means teammates' recent games were played without him.</p><div class="scroll plain" style="max-height:none;border:0"><table id="t-out"></table></div></div>
+      <div class="c-card"><h3>If questionable players sit</h3><p class="note">Not applied to projections. What each teammate would gain if a player with a Q tag is ruled out.</p><div class="scroll plain" style="max-height:none;border:0"><table id="t-q"></table></div></div>
+    </div>
+  </section>
+</main>
+
+<script id="data" type="application/json">/*__DATA__*/</script>
+<script>
+(() => {
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const COMPS = ['projection', 'ceiling', 'minutes', 'role', 'value', 'leverage', 'context', 'reliability'];
+  const COMP = {
+    projection: ['Median projection', 'PRJ', 'Projected DK points, ranked against the slate.'],
+    ceiling: ['Ceiling', 'CEIL', '85th-percentile outcome, raw and per $1K of salary.'],
+    minutes: ['Minutes', 'MIN', 'Projected minutes, discounted for how much they swing.'],
+    role: ['Role & usage', 'ROLE', 'Usage, assists, rebounds, stocks per minute vs. his position, plus role change.'],
+    value: ['Salary value', 'VAL', 'DK points per $1K, against players in the same salary range.'],
+    leverage: ['Leverage', 'LEV', 'Ceiling vs. projected ownership. Off: no ownership projections.'],
+    context: ['Game environment', 'CTX', 'Implied team total and how close the spread is.'],
+    reliability: ['Stable inputs', 'REL', 'Sample size and how much comes from this season.'],
+  };
+  const POSITIVE = { projection: 'median projection', ceiling: 'ceiling', minutes: 'secure minutes', role: 'role/usage', value: 'salary value', leverage: 'leverage', context: 'game environment', reliability: 'stable inputs' };
+  const fmt1 = (v) => (v == null ? '—' : (Math.round(v * 10) / 10).toFixed(1));
+  const money = (v) => '$' + v.toLocaleString('en-US');
+  const et = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  const STORE = 'nba-slate-board-v1';
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { return {}; } })();
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ preset: S.preset, weights: S.weights, strength: S.strength, comps: S.comps, slate: S.slate })); } catch (e) {} };
+
+  const S = {
+    slate: Math.min(saved.slate ?? 0, DATA.slates.length - 1),
+    tab: 'players', preset: saved.preset || 'gpp', weights: saved.weights || null,
+    strength: saved.strength ?? 10, comps: !!saved.comps,
+    sort: { key: 'rating', dir: -1 }, q: '', pos: '', game: '', hideQ: false, onlyBump: false,
+  };
+  const slate = () => DATA.slates[S.slate];
+  const levOn = () => !!slate().ownership;
+
+  // ---- weights: presets, rescaling to 100, leverage hand-off ----
+  function presetWeights(name) {
+    const w = { ...DATA.slates[0].presets[name] };
+    if (!levOn() && w.leverage) {
+      const core = ['projection', 'ceiling', 'minutes', 'role'];
+      const tot = core.reduce((s, k) => s + w[k], 0);
+      core.forEach((k) => { w[k] += w.leverage * w[k] / tot; });
+      w.leverage = 0;
+    }
+    COMPS.forEach((k) => { w[k] = Math.round(w[k] * 10) / 10; });
+    return w;
+  }
+  function setWeight(key, value) {
+    const v = Math.max(0, Math.min(100, value));
+    const others = COMPS.filter((k) => k !== key && (k !== 'leverage' || levOn()));
+    const tot = others.reduce((s, k) => s + S.weights[k], 0);
+    const room = 100 - v;
+    others.forEach((k) => { S.weights[k] = tot > 0 ? S.weights[k] * room / tot : room / others.length; });
+    S.weights[key] = v;
+    COMPS.forEach((k) => { S.weights[k] = Math.round(S.weights[k] * 10) / 10; });
+  }
+  if (!S.weights) S.weights = presetWeights(S.preset);
+  const isCustom = () => { const p = presetWeights(S.preset); return COMPS.some((k) => Math.abs(p[k] - S.weights[k]) > 0.05); };
+
+  // ---- rating, recomputed in the page from the model's component scores ----
+  const TIERS = [[85, 'Top-rated', 't-good'], [70, 'Strong', 't-strong'], [55, 'Context-dependent', 't-none'], [0, 'Lower priority', 't-none']];
+  function rate(p) {
+    const raw = COMPS.reduce((s, k) => s + S.weights[k] / 100 * (p.c[k] ?? 0), 0);
+    const pen = S.strength * p.severity;
+    const r = Math.max(0, raw - pen);
+    const t = TIERS.find(([f]) => r >= f);
+    const strong = COMPS.filter((k) => p.c[k] != null && p.c[k] >= 70 && S.weights[k] > 0)
+      .sort((a, b) => S.weights[b] * p.c[b] - S.weights[a] * p.c[a]).slice(0, 3)
+      .map((k) => POSITIVE[k] + ' ' + Math.round(p.c[k]));
+    if (p.bump >= 2) strong.push(`+${p.bump_min} min / +${p.bump} FP with ${p.bump_from} out`);
+    return { ...p, rating: Math.round(r * 10) / 10, penalty: pen, tier: t[1], tierCls: t[2], value: p.median / (p.salary / 1000), why: strong.join('; ') };
+  }
+
+  // ---- header, slate chips, tabs ----
+  function drawHeader() {
+    const s = slate();
+    $('hdate').textContent = s.label.split(' · ')[0];
+    const first = s.games[0];
+    $('stamp').textContent = `Model run ${et.format(new Date(s.run_at))} ET · ${s.games.length} game${s.games.length > 1 ? 's' : ''}, first lock ${first[1].replace(/^0/, '')} ET · Ceiling p${s.ceiling_pct} · Ownership ${s.ownership ? 'loaded' : 'not available'}`;
+    $('slates').replaceChildren(...DATA.slates.map((sl, i) => {
+      const b = el('button', 'chip', sl.label.split(' · ')[0] + ' ' + sl.label.split(' · ')[1].replace(/\s*\(.*\)/, ''));
+      b.append(el('small', '', sl.games.length + ' games · ' + sl.players.length + ' players'));
+      b.setAttribute('aria-pressed', String(i === S.slate));
+      b.addEventListener('click', () => { S.slate = i; S.game = ''; save(); drawAll(); });
+      return b;
+    }));
+    const g = $('f-game');
+    g.replaceChildren(new Option('All games', ''), ...s.games.map(([game, t]) => new Option(`${game} · ${t.replace(/^0/, '')}`, game)));
+    g.value = S.game;
+  }
+  document.querySelectorAll('nav.tabs button').forEach((b) => b.addEventListener('click', () => {
+    S.tab = b.dataset.p;
+    document.querySelectorAll('nav.tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+    ['players', 'lineups', 'injuries'].forEach((p) => { $('p-' + p).hidden = p !== S.tab; });
+  }));
+
+  // ---- weights panel ----
+  function drawWeights() {
+    $('presets').replaceChildren(...Object.keys(DATA.slates[0].presets).map((name) => {
+      const b = el('button', 'chip', { gpp: 'Large-field GPP', 'single-entry': 'Single entry', 'high-variance': 'High variance' }[name] || name);
+      b.setAttribute('aria-pressed', String(S.preset === name));
+      b.addEventListener('click', () => { S.preset = name; S.weights = presetWeights(name); save(); drawWeights(); drawPlayers(); });
+      return b;
+    }));
+    const base = presetWeights(S.preset);
+    const rows = COMPS.map((k) => {
+      const off = k === 'leverage' && !levOn();
+      const row = el('div', 'wt' + (off ? ' off' : '') + (Math.abs(base[k] - S.weights[k]) > 0.05 ? ' changed' : ''));
+      const id = 'w-' + k;
+      const lab = el('label', '', COMP[k][0]); lab.htmlFor = id;
+      const num = el('input'); Object.assign(num, { type: 'number', id, min: 0, max: 100, step: 0.5, value: S.weights[k], disabled: off });
+      const rng = el('input'); Object.assign(rng, { type: 'range', min: 0, max: 60, step: 0.5, value: S.weights[k], disabled: off });
+      rng.setAttribute('aria-label', COMP[k][0] + ' weight');
+      const apply = (v, final) => {
+        setWeight(k, Number(v));
+        rows.forEach((r, i) => {
+          const kk = COMPS[i];
+          r.querySelector('input[type=number]').value = S.weights[kk];
+          r.querySelector('input[type=range]').value = S.weights[kk];
+          r.classList.toggle('changed', Math.abs(base[kk] - S.weights[kk]) > 0.05);
+        });
+        drawSummary();
+        drawPlayers(!final);
+        if (final) save();
+      };
+      rng.addEventListener('input', () => apply(rng.value, false));
+      rng.addEventListener('change', () => apply(rng.value, true));
+      num.addEventListener('change', () => { if (num.value !== '' && !isNaN(num.value)) apply(num.value, true); });
+      row.append(lab, num, rng, el('small', '', COMP[k][2]));
+      return row;
+    });
+    const risk = el('div', 'wt' + (S.strength !== 10 ? ' changed' : ''));
+    const rl = el('label', '', 'Risk penalty strength'); rl.htmlFor = 'w-risk';
+    const rn = el('input'); Object.assign(rn, { type: 'number', id: 'w-risk', min: 0, max: 15, step: 1, value: S.strength });
+    const rr = el('input'); Object.assign(rr, { type: 'range', min: 0, max: 15, step: 1, value: S.strength });
+    rr.setAttribute('aria-label', 'Risk penalty strength');
+    const applyRisk = (v, final) => {
+      S.strength = Math.max(0, Math.min(15, Number(v)));
+      rn.value = rr.value = S.strength;
+      risk.classList.toggle('changed', S.strength !== 10);
+      drawSummary(); drawPlayers(!final); if (final) save();
+    };
+    rr.addEventListener('input', () => applyRisk(rr.value, false));
+    rr.addEventListener('change', () => applyRisk(rr.value, true));
+    rn.addEventListener('change', () => applyRisk(rn.value, true));
+    risk.append(rl, rn, rr, el('small', '', 'Points taken off for an unresolved Q tag (full) or blowout exposure (half). Not part of the 100.'));
+    $('wt-grid').replaceChildren(...rows, risk);
+    $('wt-note').textContent = levOn() ? '' : 'Leverage is off because there are no ownership projections; its weight goes to median, ceiling, minutes and role.';
+    drawSummary();
+  }
+  function drawSummary() {
+    const name = { gpp: 'Large-field GPP', 'single-entry': 'Single entry', 'high-variance': 'High variance' }[S.preset];
+    const top = COMPS.filter((k) => S.weights[k] > 0).sort((a, b) => S.weights[b] - S.weights[a]).slice(0, 4)
+      .map((k) => `${COMP[k][1]} ${S.weights[k]}`).join(' · ');
+    $('wts-sum').textContent = `${name}${isCustom() ? ' (edited)' : ''} — ${top} · risk ${S.strength}`;
+  }
+  $('wt-reset').addEventListener('click', () => { S.weights = presetWeights(S.preset); S.strength = 10; save(); drawWeights(); drawPlayers(); });
+
+  // ---- players table ----
+  const COLS = () => [
+    { k: 'name', l: 'Player' },
+    { k: 'team', l: 'Team' },
+    { k: 'opp', l: 'Opp' },
+    { k: 'salary', l: 'Sal', num: 1 },
+    { k: 'median', l: 'Median', num: 1 },
+    { k: 'ceiling', l: 'Ceil', num: 1 },
+    { k: 'value', l: 'Pts/$1K', num: 1 },
+    { k: 'min', l: 'Min', num: 1 },
+    { k: 'bump', l: 'Inj +', num: 1 },
+    { k: 'rating', l: 'Rating', num: 1 },
+    { k: 'tier', l: 'Tier' },
+    ...(S.comps ? COMPS.filter((k) => k !== 'leverage' || levOn()).map((k) => ({ k: 'c_' + k, l: COMP[k][1], num: 1, comp: 1 })) : []),
+    { k: 'why', l: 'Why' },
+    { k: 'risk', l: 'Risks' },
+  ];
+  const sortVal = (r, k) => (k.startsWith('c_') ? r.c[k.slice(2)] ?? -1 : k === 'risk' ? r.severity : r[k]);
+  let rankOf = new Map();
+
+  function drawPlayers(keepOrder) {
+    const s = slate();
+    const all = s.players.map(rate);
+    rankOf = new Map(all.slice().sort((a, b) => b.rating - a.rating).map((r, i) => [r.name, i + 1]));
+    const q = S.q.trim().toLowerCase();
+    let rows = all.filter((r) =>
+      (!q || (r.name + ' ' + r.team + ' ' + r.opp).toLowerCase().includes(q)) &&
+      (!S.pos || r.pos.split('/').includes(S.pos)) &&
+      (!S.game || r.game === S.game) &&
+      (!S.hideQ || !r.flags.some((f) => f.startsWith('unresolved'))) &&
+      (!S.onlyBump || r.bump > 0));
+    const { key, dir } = S.sort;
+    if (!keepOrder || !drawPlayers.order) {
+      rows.sort((a, b) => {
+        const x = sortVal(a, key), y = sortVal(b, key);
+        return typeof x === 'string' ? dir * x.localeCompare(y) : dir * (x - y);
+      });
+      drawPlayers.order = rows.map((r) => r.name);
+    } else {
+      const pos = new Map(drawPlayers.order.map((n, i) => [n, i]));
+      rows.sort((a, b) => (pos.get(a.name) ?? 1e9) - (pos.get(b.name) ?? 1e9));
+    }
+    const cols = COLS();
+    const head = el('tr');
+    cols.forEach((c) => {
+      const th = el('th', (c.num ? 'num' : '') + (c.comp ? ' comp' : ''), c.l);
+      th.tabIndex = 0;
+      if (c.comp) th.title = COMP[c.k.slice(2)][0] + ': ' + COMP[c.k.slice(2)][2];
+      if (c.k === key) th.setAttribute('aria-sort', dir > 0 ? 'ascending' : 'descending');
+      const go = () => {
+        if (S.sort.key === c.k) S.sort.dir = -S.sort.dir;
+        else S.sort = { key: c.k, dir: c.num || c.k === 'risk' ? -1 : 1 };
+        drawPlayers();
+      };
+      th.addEventListener('click', go);
+      th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      head.append(th);
+    });
+    const thead = el('thead'); thead.append(head);
+    const body = el('tbody');
+    rows.forEach((r) => {
+      const tr = el('tr');
+      const name = el('td', 'name sticky');
+      name.append(el('span', 'rk', '#' + rankOf.get(r.name)), document.createTextNode(r.name), el('span', 'pos', r.pos));
+      const rating = el('td', 'num');
+      const rb = el('span', 'rating'); const bar = el('i'); const fill = el('b');
+      fill.style.width = Math.min(100, r.rating) + '%'; bar.append(fill); rb.append(bar, el('span', '', fmt1(r.rating)));
+      rating.append(rb);
+      const tier = el('td'); tier.append(el('span', 'tag ' + r.tierCls, r.tier.replace('Context-dependent', 'Context').replace('Lower priority', 'Lower')));
+      if (r.tier === 'Lower priority') tier.firstChild.style.opacity = '.6';
+      const bump = el('td', 'num' + (r.bump > 0 ? ' up' : ' dim'), r.bump > 0 ? '+' + fmt1(r.bump) : '0');
+      if (r.bump > 0) bump.title = `+${r.bump_min} min with ${r.bump_from} out`;
+      const risk = el('td', 'txt');
+      r.flags.forEach((f) => risk.append(el('span', 'tag t-warn', f.replace('unresolved ', '').replace(' tag', ' tag'))));
+      if (r.risks.length) risk.append(document.createTextNode(r.risks.join('; ')));
+      if (!r.flags.length && !r.risks.length) risk.append(el('span', 'dim', '—'));
+      tr.append(name, el('td', '', r.team), el('td', 'dim', r.opp), el('td', 'num', money(r.salary)),
+        el('td', 'num', fmt1(r.median)), el('td', 'num', fmt1(r.ceiling)), el('td', 'num', fmt1(r.value)),
+        el('td', 'num', fmt1(r.min)), bump, rating, tier);
+      if (S.comps) COMPS.filter((k) => k !== 'leverage' || levOn()).forEach((k) => {
+        const v = r.c[k];
+        tr.append(el('td', 'num cs' + (v >= 80 ? ' hi' : v != null && v <= 20 ? ' lo' : ''), v == null ? '—' : String(Math.round(v))));
+      });
+      const why = el('td', 'txt', r.why || '—');
+      why.title = r.why || '';
+      risk.title = r.flags.concat(r.risks).join('; ');
+      tr.append(why, risk);
+      body.append(tr);
+    });
+    if (!rows.length) {
+      const tr = el('tr'); const td = el('td', 'empty', 'No players match these filters.'); td.colSpan = cols.length; tr.append(td); body.append(tr);
+    }
+    $('t-players').replaceChildren(thead, body);
+    $('count').textContent = `${rows.length} of ${all.length} players`;
+  }
+
+  $('q').addEventListener('input', (e) => { S.q = e.target.value; drawPlayers(); });
+  $('f-pos').addEventListener('change', (e) => { S.pos = e.target.value; drawPlayers(); });
+  $('f-game').addEventListener('change', (e) => { S.game = e.target.value; drawPlayers(); });
+  $('f-q').addEventListener('change', (e) => { S.hideQ = e.target.checked; drawPlayers(); });
+  $('f-bump').addEventListener('change', (e) => { S.onlyBump = e.target.checked; drawPlayers(); });
+  $('f-comps').addEventListener('change', (e) => { S.comps = e.target.checked; save(); drawPlayers(); });
+
+  // ---- lineups ----
+  function drawLineups() {
+    const s = slate();
+    $('lineups').replaceChildren(...s.lineups.map((l, i) => {
+      const card = el('div', 'c-card');
+      card.append(el('h3', '', 'Lineup ' + (i + 1)));
+      const sub = el('p', 'lu-sub');
+      [['Avg rating', fmt1(l.rating)], ['Median', fmt1(l.median)], [`Ceiling p${s.ceiling_pct}`, fmt1(l.ceiling)], ['Salary', money(l.salary)]]
+        .forEach(([k, v], j) => { if (j) sub.append(' · '); sub.append(k + ' '); sub.append(el('b', '', v)); });
+      card.append(sub);
+      const t = el('table', 'lu-t');
+      const h = el('tr'); ['Slot', 'Player', 'Team', 'Sal', 'Med', 'Ceil'].forEach((x, j) => h.append(el('th', j > 2 ? 'num' : '', x)));
+      const th = el('thead'); th.append(h);
+      const tb = el('tbody');
+      l.slots.forEach((p) => {
+        const tr = el('tr');
+        tr.append(el('td', 'dim', p.slot), el('td', 'name', p.name), el('td', '', p.team), el('td', 'num', money(p.salary)), el('td', 'num', fmt1(p.median)), el('td', 'num', fmt1(p.ceiling)));
+        tb.append(tr);
+      });
+      t.append(th, tb);
+      const box = el('div'); box.style.overflowX = 'auto'; box.append(t);
+      card.append(box);
+      const notes = el('ul', 'lu-notes');
+      const add = (k, items) => { if (!items.length) return; const li = el('li'); li.append(el('b', '', k + ': '), items.join('; ')); notes.append(li); };
+      add('Correlation', l.correlation);
+      add('Risks & late news', l.risks);
+      card.append(notes);
+      return card;
+    }));
+  }
+
+  // ---- injuries ----
+  function drawInjuries() {
+    const s = slate();
+    const t = $('t-out');
+    const h = el('tr'); ['Team', 'Out', 'Min left', 'Who gains (DK points)'].forEach((x, j) => h.append(el('th', j === 2 ? 'num' : '', x)));
+    const th = el('thead'); th.append(h);
+    const tb = el('tbody');
+    s.absences.slice().sort((a, b) => b.vacated_min - a.vacated_min).forEach((a) => {
+      const tr = el('tr');
+      const gains = a.vacated_min < 1 ? 'Already reflected in teammates’ recent games'
+        : a.gainers.slice(0, 5).map((g) => `${g.name} ${g.fp > 0 ? '+' : ''}${g.fp}`).join(', ') || 'No meaningful shift';
+      tr.append(el('td', '', a.team), el('td', 'name', a.player), el('td', 'num', fmt1(a.vacated_min)), el('td', 'wrap' + (a.vacated_min < 1 ? ' dim' : ''), gains));
+      tb.append(tr);
+    });
+    if (!s.absences.length) { const tr = el('tr'); const td = el('td', 'empty', 'Nobody on this slate is ruled out.'); td.colSpan = 4; tr.append(td); tb.append(tr); }
+    t.replaceChildren(th, tb);
+
+    const tq = $('t-q');
+    const h2 = el('tr'); ['Team', 'If he sits', 'Who gains (DK points)'].forEach((x) => h2.append(el('th', '', x)));
+    const th2 = el('thead'); th2.append(h2);
+    const tb2 = el('tbody');
+    const teamOf = new Map(s.players.map((p) => [p.name, p.team]));
+    s.late_news.forEach((n) => {
+      const tr = el('tr');
+      tr.append(el('td', '', teamOf.get(n.player) || ''), el('td', 'name', n.player), el('td', 'wrap', n.gainers.slice(0, 5).map((g) => `${g.name} +${g.fp}`).join(', ')));
+      tb2.append(tr);
+    });
+    if (!s.late_news.length) { const tr = el('tr'); const td = el('td', 'empty', 'No questionable players on this slate.'); td.colSpan = 3; tr.append(td); tb2.append(tr); }
+    tq.replaceChildren(th2, tb2);
+  }
+
+  function drawAll() {
+    drawHeader(); drawWeights(); drawPlayers(); drawLineups(); drawInjuries();
+    $('f-comps').checked = S.comps;
+  }
+  drawAll();
+})();
+</script>

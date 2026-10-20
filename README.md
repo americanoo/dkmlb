@@ -9,6 +9,7 @@ python3 nba/rate.py                    # rate the main slate, build 3 legal line
 python3 nba/rate.py --preset high-variance --weight ceiling=26 --lineups 10
 python3 nba/review.py                  # calibrate logged ratings against actual results
 python3 nba/rate.py --assume-out "Player Name"   # late-news scenario; --assume-in to reverse
+python3 nba/board.py board.html 155078 "Wed Oct 21 · Main (11 games)"   # sortable slate board page
 ```
 
 - `nba/dk_nba.py`: DK slate + salaries, ESPN rosters/injuries/game logs/Vegas lines, minutes x FP/min projection
