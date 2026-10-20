@@ -148,18 +148,22 @@ def parse_gamelog(data):
             for ev in cat.get("events", []):
                 row = dict(zip(labels, ev["stats"]))
                 fgm, fga = split_made_att(row["FG"])
-                tpm, _ = split_made_att(row["3PT"])
-                _, fta = split_made_att(row["FT"])
+                tpm, tpa = split_made_att(row["3PT"])
+                ftm, fta = split_made_att(row["FT"])
                 meta = events.get(ev["eventId"], {})
                 team = meta.get("team", {}).get("abbreviation", "")
+                opp = meta.get("opponent", {}).get("abbreviation", "")
                 games.append({
                     "date": meta.get("gameDate", ""),
                     "event_id": ev["eventId"],
                     "season": season_end,
                     "team": ESPN_TO_DK.get(team, team),
-                    "MIN": float(row["MIN"]), "PTS": int(row["PTS"]), "3PM": tpm,
+                    "opp": ESPN_TO_DK.get(opp, opp),
+                    "away": meta.get("atVs") == "@",
+                    "MIN": float(row["MIN"]), "PTS": int(row["PTS"]), "3PM": tpm, "3PA": tpa,
                     "REB": int(row["REB"]), "AST": int(row["AST"]), "STL": int(row["STL"]),
-                    "BLK": int(row["BLK"]), "TO": int(row["TO"]), "FGA": fga, "FTA": fta,
+                    "BLK": int(row["BLK"]), "TO": int(row["TO"]), "FGM": fgm, "FGA": fga,
+                    "FTM": ftm, "FTA": fta,
                 })
         break  # most recent regular season only
     games.sort(key=lambda g: g["date"], reverse=True)

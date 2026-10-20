@@ -91,6 +91,43 @@ td.wrap{white-space:normal;min-width:20ch;max-width:52ch;font-size:12.5px;line-h
 .cs.lo{color:var(--bad)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:12.5px;margin:10px 0 0}
 .empty{padding:24px;color:var(--muted);text-align:center;white-space:normal}
+.down{color:var(--bad)}
+#t-players tr.grp th{font:600 11px/1 var(--display);letter-spacing:.08em;color:var(--faint);background:var(--surface);cursor:default;padding-block:6px 4px;text-align:center;border-bottom:1px solid var(--line)}
+#t-players tr.grp th:first-child{background:var(--surface)}
+#t-players tr.cols th{top:var(--h1,0px)}
+th.g-start,td.g-start{border-left:1px solid var(--line)}
+button.pname{font:inherit;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-align:left}
+button.pname:hover{color:var(--accent);text-decoration:underline}
+button.pname[aria-expanded="true"]{color:var(--accent)}
+tr.detail>td{background:var(--ground);white-space:normal;padding:0;border-bottom:2px solid var(--line)}
+tr.detail:hover>td{background:var(--ground)}
+.dt-box{position:sticky;left:0;width:min(1180px,calc(100vw - 64px));display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px 28px;padding:12px 14px 14px}
+.dt-math ol{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;line-height:1.45}
+.dt-math b{font-weight:600}
+.dt-math .note{margin:10px 0 0}
+.dt-log{min-width:0;overflow-x:auto}
+.log-t{font-size:12.5px;width:auto}
+.log-t th,.log-t td{padding:3px 7px;position:static;background:none;cursor:default;border-bottom:1px solid var(--line)}
+.log-t th{font-size:11.5px;padding-block:4px}
+.log-t th::after{content:none}
+.dt-log .note{margin:6px 0 0;font-size:12px}
+.gl-h{font:700 14px/1.1 var(--display);letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;color:var(--ink)}
+.gl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px 28px}
+.gl-grid dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12.5px}
+.gl-grid dt{font-weight:600;white-space:nowrap}
+.gl-grid dd{margin:0;color:var(--muted)}
+.colpick{position:relative}
+.colpick summary{cursor:pointer;font:500 13px var(--body);border:1px solid var(--line);background:var(--surface);border-radius:4px;padding:7px 11px;list-style:none;color:var(--ink)}
+.colpick summary::-webkit-details-marker{display:none}
+.colpick[open] summary{border-color:var(--accent)}
+.cp-body{position:absolute;z-index:6;top:calc(100% + 6px);left:0;width:min(760px,calc(100vw - 32px));max-height:65vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.cp-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:14px}
+.cp-g{border:0;padding:0;margin:0;display:grid;gap:3px;align-content:start}
+.cp-g legend{font:700 13px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 0 4px}
+.cp-g label{font-size:13px;display:flex;gap:6px;align-items:center;color:var(--ink)}
+.cp-g input{accent-color:var(--accent)}
+button.lnk{background:none;border:0;padding:2px 0;color:var(--accent);font:500 12.5px var(--body);cursor:pointer}
+button.lnk:hover{text-decoration:underline}
 /* rating weights */
 details.dsec{background:var(--surface);border:1px solid var(--line);border-radius:6px;margin-bottom:12px}
 details.dsec>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:11px 14px}
@@ -154,13 +191,14 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       <select id="f-game" aria-label="Game"><option value="">All games</option></select>
       <label><input type="checkbox" id="f-q"> Hide questionable</label>
       <label><input type="checkbox" id="f-bump"> Only injury bumps</label>
-      <label><input type="checkbox" id="f-comps"> Show stat scores</label>
+      <details class="colpick" id="colpick"></details>
       <span class="count" id="count"></span>
     </div>
+    <details class="dsec" id="gl"><summary><span class="ds-t">Column definitions</span><span class="ds-h">What every number means and how it's calculated. Hover any header for the same text.</span></summary><div class="ds-b" id="gl-body"></div></details>
     <div class="scroll"><table id="t-players"></table></div>
     <div class="legend">
       <span><span class="tag t-good">Top-rated</span>85+</span><span><span class="tag t-strong">Strong</span>70–84</span><span><span class="tag t-none">Context</span>55–69</span><span><span class="tag t-none" style="opacity:.6">Lower</span>under 55</span>
-      <span><b>Median</b> = projected DK points; <b>Ceil</b> = estimated 85th-percentile outcome; <b>Inj +</b> = DK points added because a teammate is out.</span>
+      <span>Click a player's name for his last 10 games and the projection math. Box-score, minutes and DK-point columns are real game results; Proj, Floor, Ceil, 5x % and Rating are model outputs.</span>
     </div>
   </section>
 
@@ -201,7 +239,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
 
   const STORE = 'nba-slate-board-v1';
   const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { return {}; } })();
-  const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ preset: S.preset, weights: S.weights, strength: S.strength, comps: S.comps, slate: S.slate })); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ preset: S.preset, weights: S.weights, strength: S.strength, slate: S.slate, cols: S.cols ? [...S.cols] : saved.cols })); } catch (e) {} };
 
   const S = {
     slate: Math.min(saved.slate ?? 0, DATA.slates.length - 1),
@@ -335,25 +373,256 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
   }
   $('wt-reset').addEventListener('click', () => { S.weights = presetWeights(S.preset); S.strength = 10; save(); drawWeights(); drawPlayers(); });
 
-  // ---- players table ----
-  const COLS = () => [
-    { k: 'name', l: 'Player' },
-    { k: 'team', l: 'Team' },
-    { k: 'opp', l: 'Opp' },
-    { k: 'salary', l: 'Sal', num: 1 },
-    { k: 'median', l: 'Median', num: 1 },
-    { k: 'ceiling', l: 'Ceil', num: 1 },
-    { k: 'value', l: 'Pts/$1K', num: 1 },
-    { k: 'min', l: 'Min', num: 1 },
-    { k: 'bump', l: 'Inj +', num: 1 },
-    { k: 'rating', l: 'Rating', num: 1 },
-    { k: 'tier', l: 'Tier' },
-    ...(S.comps ? COMPS.filter((k) => k !== 'leverage' || levOn()).map((k) => ({ k: 'c_' + k, l: COMP[k][1], num: 1, comp: 1 })) : []),
-    { k: 'why', l: 'Why' },
-    { k: 'risk', l: 'Risks' },
+  // ---- players table: every column, grouped, each with its definition ----
+  const pctTxt = (v) => (v == null ? '—' : Math.round(v) + '%');
+  const signed1 = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + fmt1(v));
+  const COLUMNS = [
+    { k: 'name', l: 'Player', g: 'Player', fixed: 1, t: 'Model rank by current rating (#), name and DK positions. Click a name for his game log and the projection math.' },
+    { k: 'team', l: 'Team', g: 'Slate', d: 1, t: 'DK team.' },
+    { k: 'opp', l: 'Opp', g: 'Slate', d: 1, t: 'Opponent tonight.' },
+    { k: 'ha', l: 'H/A', g: 'Slate', t: 'Home or away.' },
+    { k: 'time', l: 'Tip', g: 'Slate', t: 'Tip-off, ET. Later games leave room for late swap.' },
+    { k: 'salary', l: 'Sal', g: 'Slate', d: 1, num: 1, f: money, t: 'DraftKings salary.' },
+    { k: 'dk_avg', l: 'DK avg', g: 'Slate', num: 1, f: fmt1, t: "DraftKings' own listed average DK points per game." },
+    { k: 'status', l: 'Status', g: 'Slate', t: 'DK or ESPN injury status (Q = questionable, GTD, Out).' },
+    { k: 'median', l: 'Proj', g: 'Projection', d: 1, num: 1, f: fmt1, t: 'Median projected DK points = projected minutes × DK points per minute (see the row detail for the math).' },
+    { k: 'base_median', l: 'Base', g: 'Projection', num: 1, f: fmt1, t: 'Projection before any injury bump from absent teammates.' },
+    { k: 'bump', l: 'Inj +', g: 'Projection', d: 1, num: 1, t: 'DK points added because a teammate is ruled out (minutes and usage he leaves behind).' },
+    { k: 'floor', l: 'Floor', g: 'Projection', d: 1, num: 1, f: fmt1, t: '15th percentile of 2,000 simulated games: a bad but plausible night.' },
+    { k: 'ceiling', l: 'Ceil', g: 'Projection', d: 1, num: 1, f: fmt1, t: '85th percentile of 2,000 simulated games: a good night that happens about 1 in 7.' },
+    { k: 'value', l: 'Pts/$1K', g: 'Projection', d: 1, num: 1, f: fmt1, t: 'Projected DK points per $1,000 of salary. 5.0 is the usual GPP bar on DK NBA.' },
+    { k: 'x5', l: '5x %', g: 'Projection', d: 1, num: 1, f: pctTxt, t: 'Share of simulated games reaching 5× salary (e.g. 40.5 points at $8,100).' },
+    { k: 'x6', l: '6x %', g: 'Projection', num: 1, f: pctTxt, t: 'Share of simulated games reaching 6× salary, a GPP-winning score.' },
+    { k: 'min', l: 'Proj', g: 'Minutes', d: 1, num: 1, f: fmt1, t: 'Projected minutes: 0.5 × last 5 + 0.3 × last 10 + 0.2 × full sample, plus any injury bump.' },
+    { k: 'min_l5', l: 'L5', g: 'Minutes', d: 1, num: 1, f: fmt1, t: 'Average minutes, last 5 games played.' },
+    { k: 'min_l10', l: 'L10', g: 'Minutes', num: 1, f: fmt1, t: 'Average minutes, last 10 games played.' },
+    { k: 'min_szn', l: 'Szn', g: 'Minutes', d: 1, num: 1, f: fmt1, t: 'Average minutes over the season shown in the Sample columns.' },
+    { k: 'min_sd', l: 'SD', g: 'Minutes', d: 1, num: 1, f: fmt1, t: 'How much minutes swing game to game (standard deviation, last 10), widened when the role is changing. Lower = safer minutes.' },
+    { k: 'fp_l5', l: 'L5', g: 'DK points', d: 1, num: 1, f: fmt1, t: 'Average DK points, last 5 games played.' },
+    { k: 'fp_l10', l: 'L10', g: 'DK points', d: 1, num: 1, f: fmt1, t: 'Average DK points, last 10 games played.' },
+    { k: 'fp_szn', l: 'Szn', g: 'DK points', d: 1, num: 1, f: fmt1, t: 'Average DK points over the season shown in the Sample columns.' },
+    { k: 'fp_hi', l: 'Hi L10', g: 'DK points', num: 1, f: fmt1, t: 'Best DK score in the last 10 games.' },
+    { k: 'fp_lo', l: 'Lo L10', g: 'DK points', num: 1, f: fmt1, t: 'Worst DK score in the last 10 games.' },
+    { k: 'fp_sd', l: 'SD', g: 'DK points', num: 1, f: fmt1, t: 'Game-to-game spread of DK points over the season. Higher = more volatile.' },
+    { k: 'fppm_l10', l: '/Min L10', g: 'DK points', num: 1, f: (v) => (v == null ? '—' : v.toFixed(2)), t: 'DK points per minute, last 10 games.' },
+    { k: 'fppm_szn', l: '/Min Szn', g: 'DK points', d: 1, num: 1, f: (v) => (v == null ? '—' : v.toFixed(2)), t: 'DK points per minute over the season.' },
+    { k: 'hit5', l: '5x L20', g: 'DK points', d: 1, num: 1, f: pctTxt, t: 'Share of his last 20 games that would have reached 5× his CURRENT salary. Real games, not simulations.' },
+    { k: 'pts', l: 'PTS', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Points per game (season).' },
+    { k: 'reb', l: 'REB', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Rebounds per game. Worth 1.25 DK points each.' },
+    { k: 'ast', l: 'AST', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Assists per game. Worth 1.5 DK points each.' },
+    { k: 'stl', l: 'STL', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Steals per game. Worth 2 DK points each.' },
+    { k: 'blk', l: 'BLK', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Blocks per game. Worth 2 DK points each.' },
+    { k: 'tov', l: 'TOV', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Turnovers per game. Cost 0.5 DK points each.' },
+    { k: 'tpm', l: '3PM', g: 'Box score per game', d: 1, num: 1, f: fmt1, t: 'Threes made per game. +0.5 DK bonus each on top of the 3 points.' },
+    { k: 'fga', l: 'FGA', g: 'Box score per game', num: 1, f: fmt1, t: 'Field-goal attempts per game.' },
+    { k: 'fta', l: 'FTA', g: 'Box score per game', num: 1, f: fmt1, t: 'Free-throw attempts per game.' },
+    { k: 'fg_pct', l: 'FG%', g: 'Box score per game', num: 1, f: fmt1, t: 'Field-goal percentage, season.' },
+    { k: 'tp_pct', l: '3P%', g: 'Box score per game', num: 1, f: fmt1, t: 'Three-point percentage, season.' },
+    { k: 'ft_pct', l: 'FT%', g: 'Box score per game', num: 1, f: fmt1, t: 'Free-throw percentage, season.' },
+    { k: 'pts36', l: 'PTS', g: 'Per 36 min', num: 1, f: fmt1, t: 'Points per 36 minutes: what he does when on the floor, useful when his minutes are about to change.' },
+    { k: 'reb36', l: 'REB', g: 'Per 36 min', num: 1, f: fmt1, t: 'Rebounds per 36 minutes.' },
+    { k: 'ast36', l: 'AST', g: 'Per 36 min', num: 1, f: fmt1, t: 'Assists per 36 minutes.' },
+    { k: 'stk36', l: 'STL+BLK', g: 'Per 36 min', num: 1, f: fmt1, t: 'Steals plus blocks per 36 minutes.' },
+    { k: 'usg36', l: 'Usage', g: 'Per 36 min', d: 1, num: 1, f: fmt1, t: 'Possessions used per 36 minutes: FGA + 0.44 × FTA + TOV. A box-score stand-in for usage rate (true USG% needs team totals).' },
+    { k: 'dd', l: 'DD %', g: 'Bonuses', d: 1, num: 1, f: pctTxt, t: 'Share of season games with a double-double (+1.5 DK).' },
+    { k: 'td', l: 'TD %', g: 'Bonuses', num: 1, f: pctTxt, t: 'Share of season games with a triple-double (+3 more DK).' },
+    { k: 'total', l: 'O/U', g: 'Matchup', d: 1, num: 1, f: fmt1, t: 'Game total from DraftKings (via ESPN). Higher = more possessions and points.' },
+    { k: 'spread', l: 'Spread', g: 'Matchup', d: 1, num: 1, f: signed1, t: "His team's spread. Negative = favored. 10+ either way raises blowout risk for starters' minutes." },
+    { k: 'implied', l: 'Team tot', g: 'Matchup', d: 1, num: 1, f: fmt1, t: 'Implied team total = O/U ÷ 2 − spread ÷ 2.' },
+    { k: 'dvp', l: 'DvP', g: 'Matchup', d: 1, num: 1, f: (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%'), t: "DK points per minute tonight's opponent allowed to his position group (G / F / C) last season, vs. the league average. + = soft matchup. From every loaded player's game logs (cells under 15 games are blank)." },
+    { k: 'dvp_rank', l: 'DvP rk', g: 'Matchup', num: 1, t: 'Opponent rank among teams for DK points allowed to his position group; 1 = softest.' },
+    { k: 'rating', l: 'Rating', g: 'Rating', d: 1, num: 1, t: 'Model rating out of 100 with the weights above, minus the risk penalty. Slate-relative, not a projection.' },
+    { k: 'tier', l: 'Tier', g: 'Rating', d: 1, t: '85+ top-rated, 70–84 strong, 55–69 context-dependent, under 55 lower priority.' },
+    ...COMPS.map((k) => ({ k: 'c_' + k, l: COMP[k][1], g: 'Rating', num: 1, comp: 1, t: COMP[k][0] + ' score, 0–100 vs. this slate: ' + COMP[k][2] })),
+    { k: 'gp', l: 'GP', g: 'Sample', num: 1, t: 'Games played in the season the Szn columns use.' },
+    { k: 'season', l: 'Season', g: 'Sample', t: 'Season the Szn columns use: the latest with 10+ games played.' },
+    { k: 'gp_cur', l: "GP '27", g: 'Sample', num: 1, t: 'Games played this season (2026-27). Until there are 10, projections lean on last season.' },
+    { k: 'why', l: 'Why', g: 'Notes', d: 1, t: 'Strongest parts of the rating under the current weights.' },
+    { k: 'risk', l: 'Risks', g: 'Notes', d: 1, t: 'Injury tags, blowout exposure, minutes volatility and late-news notes.' },
   ];
-  const sortVal = (r, k) => (k.startsWith('c_') ? r.c[k.slice(2)] ?? -1 : k === 'risk' ? r.severity : r[k]);
+  const DEFAULT_COLS = COLUMNS.filter((c) => c.d).map((c) => c.k);
+  S.cols = new Set(saved.cols || DEFAULT_COLS);
+  S.open = new Set();
+  const visibleCols = () => COLUMNS.filter((c) => c.fixed || (S.cols.has(c.k) && (c.k !== 'c_leverage' || levOn())));
+  const sortVal = (r, k) => {
+    if (k.startsWith('c_')) return r.c[k.slice(2)];
+    if (k === 'risk') return r.severity;
+    if (k === 'dvp_rank') return r.dvp_rank ? parseInt(r.dvp_rank, 10) : null;
+    return r[k];
+  };
+  const cmp = (x, y, dir) => {
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return typeof x === 'string' ? dir * x.localeCompare(y) : dir * (x - y);
+  };
   let rankOf = new Map();
+
+  function saveCols() {
+    try { const o = JSON.parse(localStorage.getItem(STORE)) || {}; o.cols = [...S.cols]; localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) {}
+  }
+
+  function drawColPicker() {
+    const groups = [...new Set(COLUMNS.filter((c) => !c.fixed).map((c) => c.g))];
+    const body = el('div', 'cp-body');
+    const actions = el('div', 'cp-actions');
+    [['Default columns', () => DEFAULT_COLS], ['Show every stat', () => COLUMNS.map((c) => c.k)], ['Hide every stat', () => []]].forEach(([label, fn]) => {
+      const b = el('button', 'lnk', label);
+      b.type = 'button';
+      b.addEventListener('click', () => { S.cols = new Set(fn()); saveCols(); drawColPicker(); drawPlayers(); });
+      actions.append(b);
+    });
+    body.append(actions);
+    groups.forEach((g) => {
+      const fs = el('fieldset', 'cp-g');
+      fs.append(el('legend', '', g));
+      COLUMNS.filter((c) => c.g === g && (c.k !== 'c_leverage' || levOn())).forEach((c) => {
+        const lab = el('label');
+        const cb = el('input'); cb.type = 'checkbox'; cb.checked = S.cols.has(c.k);
+        cb.addEventListener('change', () => { cb.checked ? S.cols.add(c.k) : S.cols.delete(c.k); saveCols(); drawPlayers(); $('cp-count').textContent = visibleCols().length - 1; });
+        lab.append(cb, document.createTextNode(c.l + (c.l.length <= 4 && g !== 'Slate' ? ' · ' + g.split(' ')[0].toLowerCase() : '')));
+        lab.title = c.t;
+        fs.append(lab);
+      });
+      body.append(fs);
+    });
+    const sum = el('summary');
+    const n = el('span', '', String(visibleCols().length - 1));
+    n.id = 'cp-count';
+    sum.append('Columns (', n, ')');
+    const d = $('colpick');
+    const wasOpen = d.open;
+    d.replaceChildren(sum, body);
+    d.open = wasOpen;
+  }
+
+  function drawGlossary() {
+    const groups = [...new Set(COLUMNS.map((c) => c.g))];
+    const box = el('div', 'gl-grid');
+    groups.forEach((g) => {
+      const sec = el('div');
+      sec.append(el('h4', 'gl-h', g));
+      const dl = el('dl');
+      COLUMNS.filter((c) => c.g === g && (c.k !== 'c_leverage' || levOn())).forEach((c) => { dl.append(el('dt', '', c.l), el('dd', '', c.t)); });
+      sec.append(dl);
+      box.append(sec);
+    });
+    $('gl-body').replaceChildren(box);
+  }
+
+  function cell(c, r) {
+    const td = el('td', c.num ? 'num' : '');
+    const v = c.comp ? r.c[c.k.slice(2)] : r[c.k];
+    switch (c.k) {
+      case 'name': {
+        td.className = 'name sticky';
+        const b = el('button', 'pname');
+        b.type = 'button';
+        b.setAttribute('aria-expanded', String(S.open.has(r.name)));
+        b.append(el('span', 'rk', '#' + rankOf.get(r.name)), document.createTextNode(r.name));
+        b.addEventListener('click', () => { S.open.has(r.name) ? S.open.delete(r.name) : S.open.add(r.name); drawPlayers(true); });
+        td.append(b, el('span', 'pos', r.pos));
+        return td;
+      }
+      case 'rating': {
+        const rb = el('span', 'rating'); const bar = el('i'); const fill = el('b');
+        fill.style.width = Math.min(100, r.rating) + '%'; bar.append(fill); rb.append(bar, el('span', '', fmt1(r.rating)));
+        td.append(rb);
+        return td;
+      }
+      case 'tier': {
+        const t = el('span', 'tag ' + r.tierCls, r.tier.replace('Context-dependent', 'Context').replace('Lower priority', 'Lower'));
+        if (r.tier === 'Lower priority') t.style.opacity = '.6';
+        td.append(t);
+        return td;
+      }
+      case 'bump':
+        td.className = 'num' + (r.bump > 0 ? ' up' : ' dim');
+        td.textContent = r.bump > 0 ? '+' + fmt1(r.bump) : '0';
+        if (r.bump > 0) td.title = `+${r.bump_min} min with ${r.bump_from} out`;
+        return td;
+      case 'status':
+        if (v) td.append(el('span', 'tag ' + (/out/i.test(v) ? 't-bad' : 't-warn'), v)); else td.append(el('span', 'dim', '—'));
+        return td;
+      case 'opp': case 'ha': case 'time':
+        td.className = 'dim';
+        td.textContent = c.k === 'time' ? v.replace(/^0/, '') : v;
+        return td;
+      case 'dvp':
+        td.textContent = c.f(v);
+        if (v != null) { td.className = 'num ' + (v >= 4 ? 'up' : v <= -4 ? 'down' : ''); td.title = `${r.opp} vs ${r.dvp_group}: ${r.dvp_n} games, rank ${r.dvp_rank}`; }
+        return td;
+      case 'why':
+        td.className = 'txt';
+        td.textContent = r.why || '—';
+        td.title = r.why || '';
+        return td;
+      case 'risk':
+        td.className = 'txt';
+        r.flags.forEach((f) => td.append(el('span', 'tag t-warn', f.replace('unresolved ', ''))));
+        if (r.risks.length) td.append(document.createTextNode(r.risks.join('; ')));
+        if (!r.flags.length && !r.risks.length) td.append(el('span', 'dim', '—'));
+        td.title = r.flags.concat(r.risks).join('; ');
+        return td;
+    }
+    if (c.comp) {
+      td.className = 'num cs' + (v >= 80 ? ' hi' : v != null && v <= 20 ? ' lo' : '');
+      td.textContent = v == null ? '—' : String(Math.round(v));
+      return td;
+    }
+    td.textContent = c.f ? c.f(v) : (v == null || v === '' ? '—' : String(v));
+    return td;
+  }
+
+  function detail(r, span) {
+    const tr = el('tr', 'detail');
+    const td = el('td'); td.colSpan = span;
+    const box = el('div', 'dt-box');
+    const m = r.math;
+
+    const math = el('div', 'dt-math');
+    math.append(el('h4', 'gl-h', 'How his projection is built'));
+    const ol = el('ol');
+    const line = (...parts) => { const li = el('li'); parts.forEach((x) => li.append(typeof x === 'string' ? document.createTextNode(x) : x)); ol.append(li); };
+    const b = (x) => el('b', '', x);
+    line('Minutes: 0.5 × last 5 ', b(fmt1(m.min_l5)), ' + 0.3 × last 10 ', b(fmt1(m.min_l10)), ` + 0.2 × all ${m.n_all} games `, b(fmt1(m.min_all)), ' = ', b(fmt1(m.base_min)),
+      ...(m.bump_min ? [', plus ', b('+' + m.bump_min), ` with ${m.bump_from} out = `, b(fmt1(m.min))] : []));
+    line('DK points per minute: 0.3 × last 10 ', b(m.fppm_l10.toFixed(3)), ' + 0.7 × all games ', b(m.fppm_all.toFixed(3)), ' = ', b(m.base_fppm.toFixed(3)),
+      ...(Math.abs(m.fppm - m.base_fppm) > 0.0005 ? [', raised to ', b(m.fppm.toFixed(3)), ' for the usage absent teammates leave'] : []));
+    line('Projection: ', b(fmt1(m.min)), ' min × ', b(m.fppm.toFixed(3)), ' = ', b(fmt1(m.proj)), ' DK points',
+      ...(m.bump_fp ? [` (${fmt1(m.base_proj)} before the injury bump)`] : []));
+    line(`Range: ${m.sims.toLocaleString()} simulated games (minutes around ${fmt1(m.min)} with SD ${fmt1(r.min_sd)}, × a per-minute rate drawn from his last 30 games). Floor (p15) `, b(fmt1(r.floor)),
+      ', ceiling (p85) ', b(fmt1(r.ceiling)), `, 5× salary (${fmt1(5 * r.salary / 1000)}) in `, b(r.x5 + '%'), ' of them; in real games he hit it ', b(r.hit5 + '%'), ' of his last 20.');
+    const parts = COMPS.filter((k) => S.weights[k] > 0 && r.c[k] != null).map((k) => `${COMP[k][1]} ${Math.round(r.c[k])} × ${S.weights[k]}%`);
+    const raw = COMPS.reduce((s, k) => s + S.weights[k] / 100 * (r.c[k] ?? 0), 0);
+    line('Rating: ', parts.join(' + '), ' = ', b(fmt1(raw)), r.penalty ? ` − risk penalty ${fmt1(r.penalty)}` : '', ' → ', b(fmt1(r.rating)));
+    math.append(ol);
+    if (r.dvp != null) math.append(el('p', 'note', `DvP: ${r.opp} allowed ${r.dvp > 0 ? '+' : ''}${r.dvp.toFixed(1)}% DK points per minute to ${{ G: 'guards', F: 'forwards', C: 'centers' }[r.dvp_group]} vs. league average last season (${r.dvp_n} player-games, rank ${r.dvp_rank}, 1 = softest).`));
+
+    const logBox = el('div', 'dt-log');
+    logBox.append(el('h4', 'gl-h', `Last ${r.log.length} games`));
+    const t = el('table', 'log-t');
+    const h = el('tr');
+    ['Date', '', 'Opp', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', '3PM', 'FG', 'FT', 'DK pts', 'Szn'].forEach((x, i) => h.append(el('th', i >= 3 && i <= 13 ? 'num' : '', x)));
+    const th = el('thead'); th.append(h);
+    const tb = el('tbody');
+    const target = 5 * r.salary / 1000;
+    r.log.forEach((g) => {
+      const row = el('tr');
+      g.forEach((v, i) => {
+        const c = el('td', (i >= 3 && i <= 13 ? 'num' : '') + (i === 13 ? (v >= target ? ' up' : ' dim') : '') + (i === 1 || i === 14 ? ' dim' : ''), i === 13 ? v.toFixed(2) : String(v));
+        row.append(c);
+      });
+      tb.append(row);
+    });
+    t.append(th, tb);
+    logBox.append(t, el('p', 'note', `Green DK points reached 5× his current salary (${fmt1(target)}).`));
+
+    box.append(math, logBox);
+    td.append(box);
+    tr.append(td);
+    return tr;
+  }
 
   function drawPlayers(keepOrder) {
     const s = slate();
@@ -368,21 +637,26 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       (!S.onlyBump || r.bump > 0));
     const { key, dir } = S.sort;
     if (!keepOrder || !drawPlayers.order) {
-      rows.sort((a, b) => {
-        const x = sortVal(a, key), y = sortVal(b, key);
-        return typeof x === 'string' ? dir * x.localeCompare(y) : dir * (x - y);
-      });
+      rows.sort((a, b) => cmp(sortVal(a, key), sortVal(b, key), dir));
       drawPlayers.order = rows.map((r) => r.name);
     } else {
       const pos = new Map(drawPlayers.order.map((n, i) => [n, i]));
       rows.sort((a, b) => (pos.get(a.name) ?? 1e9) - (pos.get(b.name) ?? 1e9));
     }
-    const cols = COLS();
-    const head = el('tr');
-    cols.forEach((c) => {
-      const th = el('th', (c.num ? 'num' : '') + (c.comp ? ' comp' : ''), c.l);
+    const cols = visibleCols();
+
+    // Two header rows: column groups, then columns (both stay put while scrolling).
+    const groupRow = el('tr', 'grp');
+    cols.forEach((c, i) => {
+      if (i && cols[i - 1].g === c.g) { groupRow.lastChild.colSpan += 1; return; }
+      const th = el('th', i ? 'g-start' : '', i ? c.g : '');
+      groupRow.append(th);
+    });
+    const head = el('tr', 'cols');
+    cols.forEach((c, i) => {
+      const th = el('th', (c.num ? 'num' : '') + (c.comp ? ' comp' : '') + (i && cols[i - 1].g !== c.g ? ' g-start' : ''), c.l);
       th.tabIndex = 0;
-      if (c.comp) th.title = COMP[c.k.slice(2)][0] + ': ' + COMP[c.k.slice(2)][2];
+      th.title = c.t;
       if (c.k === key) th.setAttribute('aria-sort', dir > 0 ? 'ascending' : 'descending');
       const go = () => {
         if (S.sort.key === c.k) S.sort.dir = -S.sort.dir;
@@ -393,41 +667,24 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
       head.append(th);
     });
-    const thead = el('thead'); thead.append(head);
+    const thead = el('thead'); thead.append(groupRow, head);
     const body = el('tbody');
     rows.forEach((r) => {
       const tr = el('tr');
-      const name = el('td', 'name sticky');
-      name.append(el('span', 'rk', '#' + rankOf.get(r.name)), document.createTextNode(r.name), el('span', 'pos', r.pos));
-      const rating = el('td', 'num');
-      const rb = el('span', 'rating'); const bar = el('i'); const fill = el('b');
-      fill.style.width = Math.min(100, r.rating) + '%'; bar.append(fill); rb.append(bar, el('span', '', fmt1(r.rating)));
-      rating.append(rb);
-      const tier = el('td'); tier.append(el('span', 'tag ' + r.tierCls, r.tier.replace('Context-dependent', 'Context').replace('Lower priority', 'Lower')));
-      if (r.tier === 'Lower priority') tier.firstChild.style.opacity = '.6';
-      const bump = el('td', 'num' + (r.bump > 0 ? ' up' : ' dim'), r.bump > 0 ? '+' + fmt1(r.bump) : '0');
-      if (r.bump > 0) bump.title = `+${r.bump_min} min with ${r.bump_from} out`;
-      const risk = el('td', 'txt');
-      r.flags.forEach((f) => risk.append(el('span', 'tag t-warn', f.replace('unresolved ', '').replace(' tag', ' tag'))));
-      if (r.risks.length) risk.append(document.createTextNode(r.risks.join('; ')));
-      if (!r.flags.length && !r.risks.length) risk.append(el('span', 'dim', '—'));
-      tr.append(name, el('td', '', r.team), el('td', 'dim', r.opp), el('td', 'num', money(r.salary)),
-        el('td', 'num', fmt1(r.median)), el('td', 'num', fmt1(r.ceiling)), el('td', 'num', fmt1(r.value)),
-        el('td', 'num', fmt1(r.min)), bump, rating, tier);
-      if (S.comps) COMPS.filter((k) => k !== 'leverage' || levOn()).forEach((k) => {
-        const v = r.c[k];
-        tr.append(el('td', 'num cs' + (v >= 80 ? ' hi' : v != null && v <= 20 ? ' lo' : ''), v == null ? '—' : String(Math.round(v))));
+      cols.forEach((c, i) => {
+        const td = cell(c, r);
+        if (i && cols[i - 1].g !== c.g) td.classList.add('g-start');
+        tr.append(td);
       });
-      const why = el('td', 'txt', r.why || '—');
-      why.title = r.why || '';
-      risk.title = r.flags.concat(r.risks).join('; ');
-      tr.append(why, risk);
       body.append(tr);
+      if (S.open.has(r.name)) body.append(detail(r, cols.length));
     });
     if (!rows.length) {
       const tr = el('tr'); const td = el('td', 'empty', 'No players match these filters.'); td.colSpan = cols.length; tr.append(td); body.append(tr);
     }
-    $('t-players').replaceChildren(thead, body);
+    const table = $('t-players');
+    table.replaceChildren(thead, body);
+    table.style.setProperty('--h1', groupRow.getBoundingClientRect().height + 'px');
     $('count').textContent = `${rows.length} of ${all.length} players`;
   }
 
@@ -436,7 +693,6 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
   $('f-game').addEventListener('change', (e) => { S.game = e.target.value; drawPlayers(); });
   $('f-q').addEventListener('change', (e) => { S.hideQ = e.target.checked; drawPlayers(); });
   $('f-bump').addEventListener('change', (e) => { S.onlyBump = e.target.checked; drawPlayers(); });
-  $('f-comps').addEventListener('change', (e) => { S.comps = e.target.checked; save(); drawPlayers(); });
 
   // ---- lineups ----
   function drawLineups() {
@@ -502,7 +758,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
 
   function drawAll() {
     drawHeader(); drawWeights(); drawPlayers(); drawLineups(); drawInjuries();
-    $('f-comps').checked = S.comps;
+    drawColPicker(); drawGlossary();
   }
   drawAll();
 })();
