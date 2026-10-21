@@ -50,15 +50,17 @@ def tip(p):
 
 
 def late_swap_slots(ps):
-    """Legal slot assignment that keeps late swap open: as much of the latest tip-offs as
-    possible in the flex slots, the very latest in UTIL, then F, then G."""
+    """Legal slot assignment that keeps late swap open. Only arranges the players already
+    picked: the latest tip gets a flex slot first, then the next latest, and so on (the
+    very latest in UTIL, then F, then G). Players are never chosen for this."""
     best, best_key = None, None
     for perm in permutations(ps):
         if not all(s in p["positions"].split("/") for s, p in zip(SLOTS, perm)):
             continue
         slots = dict(zip(SLOTS, perm))
         flex_tips = [tip(slots[s]) for s in FLEX]
-        key = (sum(t.timestamp() for t in flex_tips), *flex_tips)
+        # Latest-first comparison: one 10:30 tip in flex beats a 10:00 plus an 8:00.
+        key = (sorted(flex_tips, reverse=True), flex_tips)
         if best_key is None or key > best_key:
             best, best_key = slots, key
     return best
