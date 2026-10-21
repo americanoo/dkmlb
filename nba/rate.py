@@ -84,7 +84,7 @@ def print_lineups(built, ceiling_pct):
               f"| salary ${ev['salary']:,}{own}")
         for slot in lu.SLOTS:
             p = lineup["slots"][slot]
-            print(f"  {slot:4} {p['name']:24} {p['team']:4} ${p['salary']:>6,}  {p['proj_fp']:>5} / {p['ceiling']:>5}  "
+            print(f"  {slot:4} {p['name']:24} {p['team']:4} {p['game_time']:>7} ${p['salary']:>6,}  {p['proj_fp']:>5} / {p['ceiling']:>5}  "
                   f"rating {p['rating']}")
         print("  correlation: " + "; ".join(ev["correlation"]))
         if ev["risks"]:

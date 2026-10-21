@@ -2,16 +2,18 @@
 
 Roster: PG, SG, SF, PF, C, G, F, UTIL; $50,000 cap; players from at least 2 games.
 Solved exactly with an integer program (PuLP + HiGHS), not by taking the top 8 ratings.
+Slots are then arranged for late swap: the latest tips go in UTIL, F and G.
 """
 
 from collections import Counter
 from datetime import datetime
-from itertools import combinations
+from itertools import combinations, permutations
 
 import pulp
 
 SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"]
 SALARY_CAP = 50000
+FLEX = ("UTIL", "F", "G")  # most to least flexible: the slots a late swap can fill from more positions
 
 
 def optimize(players, n=5, min_diff=2, objective="rating"):
@@ -39,9 +41,27 @@ def optimize(players, n=5, min_diff=2, objective="rating"):
         if pulp.LpStatus[prob.status] != "Optimal":
             break
         idx = [i for i in x if x[i].value() > 0.5]
-        slot_of = {i: s for (i, s), v in y.items() if v.value() > 0.5}
-        lineups.append({"idx": idx, "slots": {slot_of[i]: players[i] for i in idx}})
+        lineups.append({"idx": idx, "slots": late_swap_slots([players[i] for i in idx])})
     return lineups
+
+
+def tip(p):
+    return datetime.strptime(p["game_date"] + p["game_time"], "%Y%m%d%I:%M%p")
+
+
+def late_swap_slots(ps):
+    """Legal slot assignment that keeps late swap open: as much of the latest tip-offs as
+    possible in the flex slots, the very latest in UTIL, then F, then G."""
+    best, best_key = None, None
+    for perm in permutations(ps):
+        if not all(s in p["positions"].split("/") for s, p in zip(SLOTS, perm)):
+            continue
+        slots = dict(zip(SLOTS, perm))
+        flex_tips = [tip(slots[s]) for s in FLEX]
+        key = (sum(t.timestamp() for t in flex_tips), *flex_tips)
+        if best_key is None or key > best_key:
+            best, best_key = slots, key
+    return best
 
 
 def evaluate(lineup, ceiling_pct=85):
@@ -59,7 +79,7 @@ def evaluate(lineup, ceiling_pct=85):
         "own_total": round(sum(owns), 1) if has_own else None,
         "own_avg": round(sum(owns) / len(owns), 1) if has_own else None,
         "correlation": correlation_notes(ps),
-        "risks": lineup_risks(ps),
+        "risks": lineup_risks(ps, lineup["slots"]),
     }
 
 
@@ -90,8 +110,14 @@ def correlation_notes(ps):
     return notes or ["no notable correlation"]
 
 
-def lineup_risks(ps):
+def lineup_risks(ps, slots):
     risks = [f"{p['name']}: {', '.join(p['risks'])}" for p in ps if p["risk_flags"]]
+    first = min(tip(p) for p in ps)
+    stuck = [(s, p) for s, p in slots.items() if s not in FLEX and tip(p) > first
+             and any(tip(slots[f]) < tip(p) for f in FLEX)]
+    for s, p in stuck:
+        risks.append(f"late swap: {p['name']} ({p['game_time']}) has to stay in {s}; "
+                     f"only another {s} can replace him")
     times = sorted({(datetime.strptime(p["game_time"], "%I:%M%p"), p["game_time"], p["game"]) for p in ps})
     if len(times) > 1:
         risks.append("late news windows: " + "; ".join(f"{g} {t} ET" for _, t, g in times))

@@ -195,7 +195,7 @@ def export_slate(dg, label, players, absences, dvp):
             **player_stats(p, dvp),
         } for p in rated],
         "lineups": [{**lu.evaluate(l, 85), "slots": [{
-            "slot": s, "name": l["slots"][s]["name"], "team": l["slots"][s]["team"],
+            "slot": s, "name": l["slots"][s]["name"], "team": l["slots"][s]["team"], "tip": l["slots"][s]["game_time"],
             "salary": l["slots"][s]["salary"], "median": l["slots"][s]["proj_fp"],
             "ceiling": l["slots"][s]["ceiling"], "rating": l["slots"][s]["rating"],
         } for s in lu.SLOTS]} for l in built],

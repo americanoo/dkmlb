@@ -204,7 +204,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
   </section>
 
   <section class="panel" id="p-lineups" hidden>
-    <p class="note">Legal DraftKings classic lineups (PG, SG, SF, PF, C, G, F, UTIL; $50,000 cap; 2+ games), each differing by at least 2 players. Built when the model ran, with the default GPP weights: changing the weights above re-rates players but doesn't rebuild these.</p>
+    <p class="note">Legal DraftKings classic lineups (PG, SG, SF, PF, C, G, F, UTIL; $50,000 cap; 2+ games), each differing by at least 2 players. Players in the latest games sit in G, F and UTIL so late news can be swapped. Built when the model ran, with the default GPP weights: changing the weights above re-rates players but doesn't rebuild these.</p>
     <div class="c-grid" id="lineups"></div>
   </section>
 
@@ -720,12 +720,12 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
         .forEach(([k, v], j) => { if (j) sub.append(' · '); sub.append(k + ' '); sub.append(el('b', '', v)); });
       card.append(sub);
       const t = el('table', 'lu-t');
-      const h = el('tr'); ['Slot', 'Player', 'Team', 'Sal', 'Med', 'Ceil'].forEach((x, j) => h.append(el('th', j > 2 ? 'num' : '', x)));
+      const h = el('tr'); ['Slot', 'Player', 'Team', 'Tip', 'Sal', 'Med', 'Ceil'].forEach((x, j) => h.append(el('th', j > 3 ? 'num' : '', x)));
       const th = el('thead'); th.append(h);
       const tb = el('tbody');
       l.slots.forEach((p) => {
         const tr = el('tr');
-        tr.append(el('td', 'dim', p.slot), el('td', 'name', p.name), el('td', '', p.team), el('td', 'num', money(p.salary)), el('td', 'num', fmt1(p.median)), el('td', 'num', fmt1(p.ceiling)));
+        tr.append(el('td', 'dim', p.slot), el('td', 'name', p.name), el('td', '', p.team), el('td', 'dim', (p.tip || '').replace(/^0/, '')), el('td', 'num', money(p.salary)), el('td', 'num', fmt1(p.median)), el('td', 'num', fmt1(p.ceiling)));
         tb.append(tr);
       });
       t.append(th, tb);
