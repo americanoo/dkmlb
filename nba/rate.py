@@ -126,6 +126,8 @@ def main():
     ap.add_argument("--top", type=int, default=40, help="players to print")
     ap.add_argument("--assume-out", action="append", default=[], metavar="NAME",
                     help="treat a player as out (late-news scenario); repeatable")
+    ap.add_argument("--allow-two-way", action="store_true",
+                    help="rate two-way contract players too (normally left out: they rarely play)")
     ap.add_argument("--assume-in", action="append", default=[], metavar="NAME",
                     help="treat a player listed as out as playing; repeatable")
     ap.add_argument("--no-log", action="store_true")
@@ -135,7 +137,7 @@ def main():
 
     ownership = load_ownership(args.ownership) if args.ownership else None
     dg = args.draft_group or dk_nba.pick_draft_group()
-    players, absences = dk_nba.build(dg, set(args.assume_out), set(args.assume_in))
+    players, absences = dk_nba.build(dg, set(args.assume_out), set(args.assume_in), args.allow_two_way)
 
     # Leverage needs ownership for every rateable player; partial data would be fabricated by omission.
     rateable = [p for p in players if p.get("proj_fp", 0) > 0]
@@ -151,6 +153,9 @@ def main():
     print(f"draft group {dg}: {len(rated)} rated players of {len(players)}")
     show_weights(weights, args, leverage_ok)
     print_absences(absences)
+    two_way = sorted(p["name"] for p in players if p.get("excluded"))
+    if two_way:
+        print(f"\nleft out, two-way contracts ({len(two_way)}): {', '.join(two_way)}")
     print_players(rated, args.top)
 
     pool = rated

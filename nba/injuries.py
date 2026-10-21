@@ -113,10 +113,14 @@ def wowy(mate, absent, team, vac_min):
             share * (fp_pm(without) - fp_pm(with_)))
 
 
-def apply_absences(players, assume_out=(), assume_in=()):
-    """Mark absences, bump teammates in place, and return a summary per absent player."""
+def apply_absences(players, assume_out=(), assume_in=(), excluded=()):
+    """Mark absences, bump teammates in place, and return a summary per absent player.
+
+    `excluded` players (two-way contracts) get no projection and inherit no minutes, but
+    don't vacate any either: they aren't in teammates' baselines to begin with."""
     for p in players:
         p["absent"] = is_absent(p, assume_out, assume_in)
+        p["excluded"] = p["name"] in excluded and not p["absent"]
         p["min_bump"] = p["fp_bump"] = p["usage_bump"] = 0.0
         p["bump_from"], p["if_out"] = [], []
         if "proj_min" in p:
@@ -126,7 +130,7 @@ def apply_absences(players, assume_out=(), assume_in=()):
     summary = []
     for team in sorted({p["team"] for p in players}):
         roster = [p for p in players if p["team"] == team]
-        mates = [p for p in roster if not p["absent"] and "proj_min" in p]
+        mates = [p for p in roster if not p["absent"] and not p["excluded"] and "proj_min" in p]
         recent = recent_team_events(team, roster)
         absents = [(a, vacated_minutes(a, team, recent)) for a in roster if a["absent"] and "proj_min" in a]
         summary += [{"team": team, "player": a["name"], "vacated_min": round(v, 1), "gainers": []}
@@ -160,7 +164,7 @@ def apply_absences(players, assume_out=(), assume_in=()):
 
         # Late-news scenarios: what each questionable player sitting would add (not applied).
         for q in roster:
-            if q["absent"] or (q.get("dk_status") or "").upper() not in ("Q", "GTD", "D") or "proj_min" not in q:
+            if q["absent"] or q["excluded"] or (q.get("dk_status") or "").upper() not in ("Q", "GTD", "D") or "proj_min" not in q:
                 continue
             vac = vacated_minutes(q, team, recent)
             others = [m for m in mates if m is not q]
@@ -178,8 +182,9 @@ def apply_absences(players, assume_out=(), assume_in=()):
         p["min_bump"] = round(p["proj_min"] - p["base_proj_min"], 1)
         p["usage_bump"] = round(p["usage_bump"], 3)
         p["base_proj_fp"] = round(p["base_proj_min"] * p["base_fp_per_min"], 1)
-        p["proj_fp"] = 0.0 if p["absent"] else round(p["proj_min"] * p["fp_per_min"], 1)
-        p["fp_bump"] = 0.0 if p["absent"] else round(p["proj_fp"] - p["base_proj_fp"], 1)
+        out = p["absent"] or p["excluded"]
+        p["proj_fp"] = 0.0 if out else round(p["proj_min"] * p["fp_per_min"], 1)
+        p["fp_bump"] = 0.0 if out else round(p["proj_fp"] - p["base_proj_fp"], 1)
         # A role change is less certain than an established role.
         p["min_sd"] = round(math.hypot(p["min_sd"], 0.5 * p["min_bump"]), 1)
     return summary

@@ -177,6 +177,8 @@ def export_slate(dg, label, players, absences, dvp):
         "risk_strength": 10,
         "ownership": False,
         "presets": ratings.PRESETS,
+        "two_way": sorted(f"{p['name']} ({p['team']})" for p in players if p.get("excluded")),
+        "two_way_unchecked": sorted({p["team"] for p in players if not p.get("two_way_checked", True)}),
         "games": sorted({(p["game"], p["game_time"]) for p in rated},
                         key=lambda g: datetime.strptime(g[1], "%I:%M%p")),
         "players": [{

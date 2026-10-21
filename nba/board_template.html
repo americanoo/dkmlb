@@ -195,6 +195,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       <span class="count" id="count"></span>
     </div>
     <details class="dsec" id="gl"><summary><span class="ds-t">Column definitions</span><span class="ds-h">What every number means and how it's calculated. Hover any header for the same text.</span></summary><div class="ds-b" id="gl-body"></div></details>
+    <p class="note" id="tw-note" hidden></p>
     <div class="scroll"><table id="t-players"></table></div>
     <div class="legend">
       <span><span class="tag t-good">Top-rated</span>85+</span><span><span class="tag t-strong">Strong</span>70–84</span><span><span class="tag t-none">Context</span>55–69</span><span><span class="tag t-none" style="opacity:.6">Lower</span>under 55</span>
@@ -696,6 +697,10 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     table.replaceChildren(thead, body);
     table.style.setProperty('--h1', groupRow.getBoundingClientRect().height + 'px');
     $('count').textContent = `${rows.length} of ${all.length} players`;
+    const tw = $('tw-note');
+    tw.hidden = !s.two_way?.length && !s.two_way_unchecked?.length;
+    tw.textContent = (s.two_way?.length ? `Left out, two-way contracts (they rarely play unless the team is short-handed): ${s.two_way.join(', ')}.` : '') +
+      (s.two_way_unchecked?.length ? ` Couldn't check two-way contracts for ${s.two_way_unchecked.join(', ')}.` : '');
   }
 
   $('q').addEventListener('input', (e) => { S.q = e.target.value; drawPlayers(); });

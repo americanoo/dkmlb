@@ -16,6 +16,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import re
 import statistics
 import sys
@@ -33,11 +34,15 @@ DK_PLAYERS_CSV = "https://www.draftkings.com/lineup/getavailableplayerscsv?conte
 ESPN_ROSTER = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team}/roster"
 ESPN_GAMELOG = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{id}/gamelog"
 ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={date}"
+BBR_TEAM = "https://www.basketball-reference.com/teams/{team}/{season}.html"
+CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 
 CLASSIC_GAME_TYPE = 70
 # DK team abbreviation -> ESPN team abbreviation, where they differ.
 DK_TO_ESPN = {"GSW": "GS", "NOP": "NO", "NYK": "NY", "SAS": "SA", "UTA": "UTAH", "WAS": "WSH"}
 ESPN_TO_DK = {v: k for k, v in DK_TO_ESPN.items()}
+DK_TO_BBR = {"BKN": "BRK", "CHA": "CHO", "PHX": "PHO"}
+BBR_DELAY = 3.5  # Basketball-Reference blocks clients that make more than 20 requests a minute
 
 # DK NBA classic scoring.
 DK_PTS = {"PTS": 1.0, "3PM": 0.5, "REB": 1.25, "AST": 1.5, "STL": 2.0, "BLK": 2.0, "TO": -0.5}
@@ -237,8 +242,41 @@ def load_odds(date):
     return out
 
 
-def build(draft_group, assume_out=(), assume_in=()):
-    """Enriched slate players plus a summary of injury redistributions."""
+def load_two_way(teams, season):
+    """Two-way contract players per DK team, from Basketball-Reference rosters ("(TW)").
+
+    Returns ({team: {normalized names}}, [teams that couldn't be checked]). Pages are cached
+    for the day because the site rate-limits."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    today = time.strftime("%Y%m%d")
+    out, failed, fetched = {}, [], False
+    for team in teams:
+        bbr = DK_TO_BBR.get(team, team)
+        path = os.path.join(CACHE_DIR, f"bbr_{bbr}_{season}_{today}.html")
+        try:
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    html = f.read()
+            else:
+                if fetched:
+                    time.sleep(BBR_DELAY)
+                html = get(BBR_TEAM.format(team=bbr, season=season), as_json=False)
+                fetched = True
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(html)
+        except Exception:
+            failed.append(team)
+            continue
+        names = re.findall(r"<a href='/players/[^']+'>([^<]+)</a>(?:&nbsp;)*<span class='note'><small>\(TW\)</small>", html)
+        out[team] = {norm_name(n) for n in names}
+    return out, failed
+
+
+def build(draft_group, assume_out=(), assume_in=(), allow_two_way=False):
+    """Enriched slate players plus a summary of injury redistributions.
+
+    Two-way contract players are flagged and left out of projections (they rarely play
+    unless a team is short-handed) unless allow_two_way is set."""
     players = load_slate(draft_group)
     teams = sorted({p["team"] for p in players})
     with ThreadPoolExecutor(8) as ex:
@@ -260,13 +298,23 @@ def build(draft_group, assume_out=(), assume_in=()):
             games = load_gamelog(p["espn_id"])
             p.update(summarize(games, current_season))
             p["_games"] = games
+            # Minutes earned on another team (offseason move) don't transfer to a new role.
+            if games and games[0]["team"] != p["team"]:
+                p["prev_team"] = games[0]["team"]
         except Exception as e:  # one bad player shouldn't sink the slate
             p["note"] = f"gamelog error: {e}"
         return p
 
     with ThreadPoolExecutor(8) as ex:
         out = list(ex.map(enrich, players))
-    absences = injuries.apply_absences(out, assume_out, assume_in)
+    two_way, unchecked = load_two_way(teams, current_season)
+    if unchecked:
+        print(f"warning: two-way contracts not checked for {', '.join(unchecked)}", file=sys.stderr)
+    for p in out:
+        p["two_way"] = norm_name(p["name"]) in two_way.get(p["team"], set())
+        p["two_way_checked"] = p["team"] not in unchecked
+    excluded = set() if allow_two_way else {p["name"] for p in out if p["two_way"]}
+    absences = injuries.apply_absences(out, assume_out, assume_in, excluded)
     for p in out:
         if p.get("proj_fp"):
             p["value"] = round(p["proj_fp"] / (p["salary"] / 1000), 2)

@@ -234,6 +234,10 @@ def explain(p, weights, season_started):
         risks.append(f"minutes {p['proj_min']:.0f} (sd {p.get('min_sd', 0):.0f})")
     if c["reliability"] <= 25:
         risks.append("thin or stale sample")
+    if p.get("prev_team"):
+        risks.append(f"new team: minutes are from {p['prev_team']}")
+    if p.get("two_way"):
+        risks.append("two-way contract")
     if season_started and p.get("gp_current", 0) == 0:
         risks.append("no current-season games (prior-season data)")
 
