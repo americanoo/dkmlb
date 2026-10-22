@@ -123,6 +123,9 @@ def apply_absences(players, assume_out=(), assume_in=(), excluded=()):
         p["excluded"] = p["name"] in excluded and not p["absent"]
         p["min_bump"] = p["fp_bump"] = p["usage_bump"] = 0.0
         p["bump_from"], p["if_out"] = [], []
+        if "base_proj_min" in p:
+            # Already adjusted once (a late-swap scenario reruns this): start from the baseline.
+            p["proj_min"], p["fp_per_min"] = p["base_proj_min"], p["base_fp_per_min"]
         if "proj_min" in p:
             p["base_proj_min"], p["base_fp_per_min"] = p["proj_min"], p["fp_per_min"]
             p["min_sd"] = p.get("min_sd_l10", 0.0)

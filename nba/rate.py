@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 import dk_nba  # noqa: E402
+import lateswap  # noqa: E402
 import lineups as lu  # noqa: E402
 import ratings  # noqa: E402
 
@@ -76,7 +77,7 @@ def print_players(rated, top):
               f"{p['tier']:17} {own:>5}  {pos} | {risk}")
 
 
-def print_lineups(built, ceiling_pct):
+def print_lineups(built, ceiling_pct, plans=None):
     for n, lineup in enumerate(built, 1):
         ev = lu.evaluate(lineup, ceiling_pct)
         own = f", own {ev['own_total']}% total / {ev['own_avg']}% avg" if ev["own_total"] is not None else ""
@@ -89,6 +90,8 @@ def print_lineups(built, ceiling_pct):
         print("  correlation: " + "; ".join(ev["correlation"]))
         if ev["risks"]:
             print("  risks: " + "; ".join(ev["risks"]))
+        for e in (plans[n - 1] if plans else []):
+            print("  late swap: " + lateswap.describe(e))
 
 
 def write_log(rated, weights, args, draft_group):
@@ -168,7 +171,9 @@ def main():
     built = lu.optimize(pool, n=args.lineups, min_diff=args.min_diff) if args.lineups else []
     if args.lineups and not built:
         print("\nno legal lineup from this pool")
-    print_lineups(built, args.ceiling_pct)
+    plans = lateswap.plan(built, players, weights, args.ceiling_pct, args.risk_strength,
+                          ownership if leverage_ok else None) if built else []
+    print_lineups(built, args.ceiling_pct, plans)
 
     if not args.no_log:
         print(f"\nlogged to {write_log(rated, weights, args, dg)}")

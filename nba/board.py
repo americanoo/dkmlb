@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import dk_nba  # noqa: E402
+import lateswap  # noqa: E402
 import lineups as lu  # noqa: E402
 import ratings  # noqa: E402
 
@@ -163,6 +164,7 @@ def export_slate(dg, label, players, absences, dvp):
     weights = ratings.build_weights("gpp", None, {}, leverage_available=False)
     rated = ratings.rate_players(players, weights, 85, 10.0, None)
     built = lu.optimize(rated, n=3, min_diff=2)
+    plans = lateswap.plan(built, players, weights, 85, 10.0)
 
     late = {}
     for p in rated:
@@ -194,11 +196,11 @@ def export_slate(dg, label, players, absences, dvp):
             "c": {k: p["comp"][k] for k in ratings.COMPONENTS},
             **player_stats(p, dvp),
         } for p in rated],
-        "lineups": [{**lu.evaluate(l, 85), "slots": [{
+        "lineups": [{**lu.evaluate(l, 85), "late_swap": plans[k], "slots": [{
             "slot": s, "name": l["slots"][s]["name"], "team": l["slots"][s]["team"], "tip": l["slots"][s]["game_time"],
             "salary": l["slots"][s]["salary"], "median": l["slots"][s]["proj_fp"],
             "ceiling": l["slots"][s]["ceiling"], "rating": l["slots"][s]["rating"],
-        } for s in lu.SLOTS]} for l in built],
+        } for s in lu.SLOTS]} for k, l in enumerate(built)],
         "absences": [{
             "team": a["team"], "player": a["player"], "vacated_min": a["vacated_min"],
             "gainers": [{"name": n, "min": m, "fp": g} for n, m, g, _ in a["gainers"]],
