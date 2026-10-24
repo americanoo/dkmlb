@@ -25,6 +25,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
 import injuries
 
@@ -47,6 +48,9 @@ BBR_DELAY = 3.5  # Basketball-Reference blocks clients that make more than 20 re
 # DK NBA classic scoring.
 DK_PTS = {"PTS": 1.0, "3PM": 0.5, "REB": 1.25, "AST": 1.5, "STL": 2.0, "BLK": 2.0, "TO": -0.5}
 DD_BONUS, TD_BONUS = 1.5, 3.0
+# Until a player has this many games this season, project from this season blended with all of
+# last season (this season's games count as much as EARLY_PRIOR_GAMES of last season's average).
+EARLY_SEASON_GAMES, EARLY_PRIOR_GAMES = 10, 3
 
 
 def get(url, as_json=True, tries=3):
@@ -113,6 +117,7 @@ def load_slate(draft_group):
     return players
 
 
+@lru_cache(maxsize=None)  # several slates in one run share teams
 def load_roster(dk_team):
     data = get(ESPN_ROSTER.format(team=DK_TO_ESPN.get(dk_team, dk_team).lower()))
     out = {}
@@ -130,6 +135,7 @@ def split_made_att(s):
     return int(made), int(att)
 
 
+@lru_cache(maxsize=None)
 def load_gamelog(espn_id, min_games=10):
     """Regular-season games, newest first. Early in a season, backfills from last season."""
     games, season_end = parse_gamelog(get(ESPN_GAMELOG.format(id=espn_id)))
@@ -193,11 +199,28 @@ def summarize(games, current_season=None):
 
     mins = sum(g["MIN"] for g in played)
     l5, l10 = played[:5], played[:10]
-    # Minutes drive NBA projections; lean on recent games because roles shift.
-    proj_min = 0.5 * avg(l5, "MIN") + 0.3 * avg(l10, "MIN") + 0.2 * avg(played, "MIN")
-    # FP/min is more stable, so weight the season more heavily.
-    fp_per_min = 0.3 * (sum(g["FP"] for g in l10) / sum(g["MIN"] for g in l10)) + \
-        0.7 * (sum(g["FP"] for g in played) / mins)
+    cur = [g for g in played if g["season"] == current_season]
+    prior = [g for g in played if g["season"] != current_season]
+    early = None
+    if current_season and len(cur) < EARLY_SEASON_GAMES and prior:
+        # Early season: "recent" games are the end of last season (rest, tanking, playoff
+        # rotations), so don't overweight them. Blend this season's games, by how many there
+        # are, with the whole previous season.
+        w = len(cur) / (len(cur) + EARLY_PRIOR_GAMES)
+        prior_min, prior_fppm = avg(prior, "MIN"), per_min(prior, lambda g: g["FP"])
+        cur_min = avg(cur, "MIN") if cur else prior_min
+        cur_fppm = per_min(cur, lambda g: g["FP"]) if cur else prior_fppm
+        proj_min = w * cur_min + (1 - w) * prior_min
+        fp_per_min = w * cur_fppm + (1 - w) * prior_fppm
+        early = {"n_cur": len(cur), "n_prior": len(prior), "w": round(w, 2),
+                 "cur_min": round(cur_min, 1), "prior_min": round(prior_min, 1),
+                 "cur_fppm": round(cur_fppm, 3), "prior_fppm": round(prior_fppm, 3)}
+    else:
+        # Minutes drive NBA projections; lean on recent games because roles shift.
+        proj_min = 0.5 * avg(l5, "MIN") + 0.3 * avg(l10, "MIN") + 0.2 * avg(played, "MIN")
+        # FP/min is more stable, so weight the season more heavily.
+        fp_per_min = 0.3 * (sum(g["FP"] for g in l10) / sum(g["MIN"] for g in l10)) + \
+            0.7 * (sum(g["FP"] for g in played) / mins)
     dd_rate = sum(sum(g[k] >= 10 for k in ("PTS", "REB", "AST", "STL", "BLK")) >= 2
                   for g in played) / len(played)
     stocks_pm = per_min(played, lambda g: g["STL"] + g["BLK"])
@@ -219,8 +242,10 @@ def summarize(games, current_season=None):
         "stocks_fp_share": round(2 * stocks_pm / fp_per_min, 2) if fp_per_min > 0 else 0,
         "dd_rate": round(dd_rate, 2),
         "proj_fp": round(proj_min * fp_per_min, 1),
-        # Per-game FP/min from recent real-minutes games, for ceiling simulation.
-        "_rate_samples": [g["FP"] / g["MIN"] for g in played[:30] if g["MIN"] >= 10],
+        # Per-game FP/min from real-minutes games, for ceiling simulation: recent games, or
+        # early in a season this season's plus all of last season's.
+        "_rate_samples": [g["FP"] / g["MIN"] for g in (cur + prior if early else played[:30]) if g["MIN"] >= 10],
+        "early": early,
     }
 
 

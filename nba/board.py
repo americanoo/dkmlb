@@ -1,6 +1,6 @@
 """Build the NBA Slate Board page: run the model for one or more slates and embed the results.
 
-Usage: python3 nba/board.py OUT.html DRAFT_GROUP "LABEL" [DRAFT_GROUP "LABEL" ...]
+Usage: python3 nba/board.py OUT.html DRAFT_GROUP "LABEL" [DRAFT_GROUP "LABEL" ...] [--pick6]
   e.g. python3 nba/board.py board.html 155078 "Wed Oct 21 · Main (11 games)"
 Labels are "<date> · <slate name>"; the page splits on " · ". Ratings are recomputed in the
 page from the component scores, so its weight sliders work without rerunning the model.
@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import dk_nba  # noqa: E402
 import lateswap  # noqa: E402
+import pick6  # noqa: E402
 import lineups as lu  # noqa: E402
 import ratings  # noqa: E402
 
@@ -120,7 +121,7 @@ def player_stats(p, dvp):
         "fppm_l10": round(fppm_l10, 3), "fppm_all": round(fppm_all, 3), "base_fppm": round(p["base_fp_per_min"], 3),
         "min": p["proj_min"], "fppm": p["fp_per_min"], "proj": p["proj_fp"], "base_proj": p["base_proj_fp"],
         "bump_min": p["min_bump"], "bump_fp": p["fp_bump"], "bump_from": ", ".join(p["bump_from"]),
-        "sims": len(sims),
+        "sims": len(sims), "early": p.get("early"),
     }
     log = [[et_date(g["date"]), "@" if g["away"] else "vs", g["opp"], round(g["MIN"]), g["PTS"], g["REB"], g["AST"],
             g["STL"], g["BLK"], g["TO"], f"{g['FGM']}-{g['FGA']}", f"{g['3PM']}-{g['3PA']}", f"{g['FTM']}-{g['FTA']}",
@@ -210,19 +211,44 @@ def export_slate(dg, label, players, absences, dvp):
     }
 
 
+def export_pick6():
+    """Today's Pick6 board for the page; each player-stat's last 10 games stored once."""
+    data = pick6.run()
+    pick6.log_run(data)  # graded later by pick6.py --review
+    hist = {}
+    for p in data["picks"]:
+        key = f"{p['dk_id']}|{p['stat']}"
+        hist.setdefault(key, p.pop("last10"))
+        p["hist"] = key
+        for k in ("espn_id", "dk_id", "date"):
+            p.pop(k, None)
+    data["hist"] = hist
+    return data
+
+
 def main():
-    if len(sys.argv) < 4 or len(sys.argv) % 2:
+    argv = [a for a in sys.argv[1:] if a != "--pick6"]
+    with_pick6 = len(argv) != len(sys.argv) - 1
+    if len(argv) < 3 or len(argv) % 2 == 0:
         sys.exit(__doc__)
-    args = sys.argv[2:]
+    out_path, args = argv[0], argv[1:]
     loaded = [(int(args[i]), args[i + 1], *dk_nba.build(int(args[i]))) for i in range(0, len(args), 2)]
     # One DvP table from every player loaded, so small slates borrow the bigger sample.
     dvp = compute_dvp([p for _, _, players, _ in loaded for p in players])
     slates = [export_slate(dg, label, players, absences, dvp) for dg, label, players, absences in loaded]
-    data = json.dumps({"slates": slates}, separators=(",", ":")).replace("</", "<\\/")
+    board = {"slates": slates}
+    if with_pick6:
+        try:
+            board["pick6"] = export_pick6()
+        except Exception as e:  # the DFS board still publishes without Pick6
+            print(f"warning: Pick6 not added: {e}", file=sys.stderr)
+    data = json.dumps(board, separators=(",", ":")).replace("</", "<\\/")
     with open(TEMPLATE) as f:
         page = f.read().replace("/*__DATA__*/", data)
-    with open(sys.argv[1], "w") as f:
+    with open(out_path, "w") as f:
         f.write(page)
+    if "pick6" in board:
+        print(f"Pick6: {len(board['pick6']['picks'])} picks scored")
     for o in slates:
         print(f"{o['label']}: draft group {o['draft_group']}, {len(o['players'])} players, {len(o['lineups'])} lineups")
 

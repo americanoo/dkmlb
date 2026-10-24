@@ -112,6 +112,9 @@ tr.detail:hover>td{background:var(--ground)}
 .log-t th::after{content:none}
 .dt-log .note{margin:6px 0 0;font-size:12px}
 .ls-h{margin:14px 0 6px}
+.p6-sizes{padding-block:0 12px}
+ul.p6-how{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;max-width:96ch}
+ul.p6-how code{font-size:12px}
 ul.ls{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:12.5px}
 ul.ls li{border-left:3px solid var(--line);padding:2px 0 2px 10px}
 ul.ls li.forced{border-left-color:var(--warn)}
@@ -182,6 +185,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     <button role="tab" id="tab-players" aria-selected="true" data-p="players">Players</button>
     <button role="tab" id="tab-lineups" aria-selected="false" data-p="lineups">Lineups</button>
     <button role="tab" id="tab-injuries" aria-selected="false" data-p="injuries">Injuries</button>
+    <button role="tab" id="tab-pick6" aria-selected="false" data-p="pick6" hidden>Pick6</button>
   </nav>
 </div></header>
 
@@ -223,6 +227,36 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       <div class="c-card"><h3>Ruled out</h3><p class="note">Minutes each player leaves behind, measured against his team's last 10 games, and who picks up DK points. "Already reflected" means teammates' recent games were played without him.</p><div class="scroll plain" style="max-height:none;border:0"><table id="t-out"></table></div></div>
       <div class="c-card"><h3>If questionable players sit</h3><p class="note">Not applied to projections. What each teammate would gain if a player with a Q tag is ruled out.</p><div class="scroll plain" style="max-height:none;border:0"><table id="t-q"></table></div></div>
     </div>
+  </section>
+
+  <section class="panel" id="p-pick6" hidden>
+    <p class="note" id="p6-head"></p>
+    <div class="row p6-sizes" id="p6-sizes" role="group" aria-label="Entry size"></div>
+    <details class="dsec" id="p6-how"><summary><span class="ds-t">How picks are scored</span><span class="ds-h">DK's price first, then our evidence moves it</span></summary>
+      <div class="ds-b"><ul class="p6-how">
+        <li><b>DK %</b>: Pick6's own implied chance, 50% ÷ the line's multiplier. On real games it's well calibrated, so it's the starting point. Standard lines are 1x (50/50); easier lines pay less (0.5x ≈ 100%), harder lines more.</li>
+        <li><b>Model %</b>: 4,000 simulated games from his projected minutes (with injury bumps) × per-minute production resampled from his real games. Early in the season, this season's games count 5× last season's.</li>
+        <li><b>Szn / L10 / L5</b>: how often he actually cleared this exact line.</li>
+        <li><b>Final %</b> = DK % + <span id="p6-trust"></span> × (our estimate − DK %), where our estimate = 60% model + 40% season hit rate.</li>
+        <li><b>Value</b> = final % × multiplier. A pick beats the entry's break-even when value is above the break-even shown for your entry size.</li>
+        <li><b>Edge</b> only when the model <i>and</i> his season hit rate both beat DK's price, and, early in the season, DK's standard line isn't far from his history (under 70% or over 140% of our median usually means DK knows about a new role, like a starter being out). Entries use only those, at 2x or less, one per player, at most 2 per game.</li>
+        <li><b>Assumption</b>: line multipliers multiply the entry's payout. Check the payout on your pick slip; if it differs, tell Claude.</li>
+        <li>Every run is logged; <code>python3 nba/pick6.py --review</code> grades them after the games so the trust setting can be earned, not guessed.</li>
+      </ul></div></details>
+    <div class="c-grid" id="p6-entries"></div>
+    <div class="tools">
+      <input type="search" id="p6-q" placeholder="Search player or team" aria-label="Search Pick6">
+      <select id="p6-stat" aria-label="Stat"><option value="">All stats</option></select>
+      <select id="p6-show" aria-label="Show">
+        <option value="edges">Edges only (model + season agree, ≤2x)</option>
+        <option value="std">Standard lines (1x)</option>
+        <option value="easy">Easier lines (under 1x)</option>
+        <option value="all2">All lines ≤2x</option>
+        <option value="all">Everything, long shots too</option>
+      </select>
+      <span class="count" id="p6-count"></span>
+    </div>
+    <div class="scroll"><table id="t-p6"></table></div>
   </section>
 </main>
 
@@ -319,7 +353,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
   document.querySelectorAll('nav.tabs button').forEach((b) => b.addEventListener('click', () => {
     S.tab = b.dataset.p;
     document.querySelectorAll('nav.tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-    ['players', 'lineups', 'injuries'].forEach((p) => { $('p-' + p).hidden = p !== S.tab; });
+    ['players', 'lineups', 'injuries', 'pick6'].forEach((p) => { $('p-' + p).hidden = p !== S.tab; });
   }));
 
   // ---- weights panel ----
@@ -404,7 +438,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     { k: 'value', l: 'Pts/$1K', g: 'Projection', d: 1, num: 1, f: fmt1, t: 'Projected DK points per $1,000 of salary. 5.0 is the usual GPP bar on DK NBA.' },
     { k: 'x5', l: '5x %', g: 'Projection', d: 1, num: 1, f: pctTxt, t: 'Share of simulated games reaching 5× salary (e.g. 40.5 points at $8,100).' },
     { k: 'x6', l: '6x %', g: 'Projection', num: 1, f: pctTxt, t: 'Share of simulated games reaching 6× salary, a GPP-winning score.' },
-    { k: 'min', l: 'Proj', g: 'Minutes', d: 1, num: 1, f: fmt1, t: 'Projected minutes: 0.5 × last 5 + 0.3 × last 10 + 0.2 × full sample, plus any injury bump.' },
+    { k: 'min', l: 'Proj', g: 'Minutes', d: 1, num: 1, f: fmt1, t: "Projected minutes: 0.5 × last 5 + 0.3 × last 10 + 0.2 × full sample, plus any injury bump. Until he has 10 games this season: this season's games blended with all of last season instead (open the row for the exact math)." },
     { k: 'min_l5', l: 'L5', g: 'Minutes', d: 1, num: 1, f: fmt1, t: 'Average minutes, last 5 games played.' },
     { k: 'min_l10', l: 'L10', g: 'Minutes', num: 1, f: fmt1, t: 'Average minutes, last 10 games played.' },
     { k: 'min_szn', l: 'Szn', g: 'Minutes', d: 1, num: 1, f: fmt1, t: 'Average minutes over the season shown in the Sample columns.' },
@@ -606,10 +640,17 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     const ol = el('ol');
     const line = (...parts) => { const li = el('li'); parts.forEach((x) => li.append(typeof x === 'string' ? document.createTextNode(x) : x)); ol.append(li); };
     const b = (x) => el('b', '', x);
-    line('Minutes: 0.5 × last 5 ', b(fmt1(m.min_l5)), ' + 0.3 × last 10 ', b(fmt1(m.min_l10)), ` + 0.2 × all ${m.n_all} games `, b(fmt1(m.min_all)), ' = ', b(fmt1(m.base_min)),
-      ...(m.bump_min ? [', plus ', b('+' + m.bump_min), ` with ${m.bump_from} out = `, b(fmt1(m.min))] : []));
-    line('DK points per minute: 0.3 × last 10 ', b(m.fppm_l10.toFixed(3)), ' + 0.7 × all games ', b(m.fppm_all.toFixed(3)), ' = ', b(m.base_fppm.toFixed(3)),
-      ...(Math.abs(m.fppm - m.base_fppm) > 0.0005 ? [', raised to ', b(m.fppm.toFixed(3)), ' for the usage absent teammates leave'] : []));
+    const bumpMin = m.bump_min ? [', plus ', b('+' + m.bump_min), ` with ${m.bump_from} out = `, b(fmt1(m.min))] : [];
+    const bumpRate = Math.abs(m.fppm - m.base_fppm) > 0.0005 ? [', raised to ', b(m.fppm.toFixed(3)), ' for the usage absent teammates leave'] : [];
+    if (m.early) {
+      // Early season: this season's games blended with all of last season (last April isn't "recent form").
+      const e = m.early, cw = Math.round(e.w * 100), pw = 100 - cw;
+      line(`Minutes (early season): ${cw}% this season (${e.n_cur} games) `, b(fmt1(e.cur_min)), ` + ${pw}% last season (${e.n_prior} games) `, b(fmt1(e.prior_min)), ' = ', b(fmt1(m.base_min)), ...bumpMin);
+      line(`DK points per minute: ${cw}% this season `, b(e.cur_fppm.toFixed(3)), ` + ${pw}% last season `, b(e.prior_fppm.toFixed(3)), ' = ', b(m.base_fppm.toFixed(3)), ...bumpRate);
+    } else {
+      line('Minutes: 0.5 × last 5 ', b(fmt1(m.min_l5)), ' + 0.3 × last 10 ', b(fmt1(m.min_l10)), ` + 0.2 × all ${m.n_all} games `, b(fmt1(m.min_all)), ' = ', b(fmt1(m.base_min)), ...bumpMin);
+      line('DK points per minute: 0.3 × last 10 ', b(m.fppm_l10.toFixed(3)), ' + 0.7 × all games ', b(m.fppm_all.toFixed(3)), ' = ', b(m.base_fppm.toFixed(3)), ...bumpRate);
+    }
     line('Projection: ', b(fmt1(m.min)), ' min × ', b(m.fppm.toFixed(3)), ' = ', b(fmt1(m.proj)), ' DK points',
       ...(m.bump_fp ? [` (${fmt1(m.base_proj)} before the injury bump)`] : []));
     line(`Range: ${m.sims.toLocaleString()} simulated games (minutes around ${fmt1(m.min)} with SD ${fmt1(r.min_sd)}, × a per-minute rate drawn from his last 30 games). Floor (p15) `, b(fmt1(r.floor)),
@@ -805,8 +846,148 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     tq.replaceChildren(th2, tb2);
   }
 
+  // ---- Pick6 ----
+  const P6 = DATA.pick6;
+  const P6S = { size: 3, q: '', stat: '', show: 'edges', sort: { key: 'value', dir: -1 }, open: new Set() };
+  const P6COLS = [
+    { k: 'name', l: 'Player', t: 'Click for his last 10 games against this line.' },
+    { k: 'team', l: 'Team' }, { k: 'opp', l: 'Opp' }, { k: 'tip', l: 'Tip' },
+    { k: 'stat', l: 'Stat' }, { k: 'line', l: 'Line', num: 1 }, { k: 'side', l: 'Pick' },
+    { k: 'mult', l: 'Mult', num: 1, t: 'Pick6 line multiplier. 1x = standard line.' },
+    { k: 'implied', l: 'DK %', num: 1, t: "Pick6's implied chance: 50% ÷ multiplier." },
+    { k: 'model', l: 'Model %', num: 1, t: 'Share of 4,000 simulated games that clear the line.' },
+    { k: 'szn', l: 'Szn hit', num: 1, t: 'How often he cleared this exact line in the season sample (hits / games).' },
+    { k: 'l10', l: 'L10', num: 1, t: 'Last 10 games.' }, { k: 'l5', l: 'L5', num: 1, t: 'Last 5 games.' },
+    { k: 'prob', l: 'Final %', num: 1, t: 'DK % moved toward our estimate by the trust setting.' },
+    { k: 'value', l: 'Value', num: 1, t: 'Final % × multiplier. Compare with the break-even for your entry size.' },
+    { k: 'edge', l: 'vs BE', num: 1, t: 'Value minus the per-pick break-even for the selected entry size, in points.' },
+    { k: 'median', l: 'Proj', num: 1, t: 'Median of the simulated stat line (10th–90th percentile on hover).' },
+    { k: 'flags', l: 'Notes' },
+  ];
+  function drawPick6() {
+    if (!P6) return;
+    $('tab-pick6').hidden = false;
+    const be = P6.breakeven[String(P6S.size)];
+    $('p6-head').textContent = `${P6.group.label} · first tip ${P6.group.first_tip} · ${P6.picks.length.toLocaleString()} lines scored. Break-even per pick for a ${P6S.size}-pick entry: ${be}%.` +
+      (P6.unmapped.length ? ` Not modeled: ${P6.unmapped.join(', ')}.` : '');
+    $('p6-trust').textContent = P6.trust;
+    $('p6-sizes').replaceChildren(...Object.keys(P6.breakeven).map((n) => {
+      const pay = P6.payouts[n];
+      const tiers = Object.entries(pay).sort((a, b) => b[0] - a[0]).map(([k, v]) => `${k}/${n} ${v}x`).join(', ');
+      const b = el('button', 'chip', n + '-pick');
+      b.append(el('small', '', `${tiers} · BE ${P6.breakeven[n]}%`));
+      b.setAttribute('aria-pressed', String(Number(n) === P6S.size));
+      b.addEventListener('click', () => { P6S.size = Number(n); drawPick6(); });
+      return b;
+    }));
+    const stats = [...new Set(P6.picks.map((p) => p.stat))].sort();
+    const sel = $('p6-stat');
+    if (sel.options.length === 1) stats.forEach((x) => sel.append(new Option(x, x)));
+    // Entries
+    $('p6-entries').replaceChildren(...P6.entries.filter((e) => e.size === P6S.size).map((e) => {
+      const c = el('div', 'c-card');
+      c.append(el('h3', '', `Best ${e.size}-pick entry`));
+      const sub = el('p', 'lu-sub');
+      sub.append('Expected return ', el('b', '', e.ev.toFixed(2) + ' per $1'), ' · all hit ', el('b', '', e.all_hit + '%'));
+      c.append(sub);
+      const ul = el('ul', 'ls');
+      e.picks.forEach((p) => {
+        const li = el('li');
+        li.append(el('b', '', p.name), document.createTextNode(` ${p.side} ${p.line} ${p.stat} `), el('span', 'dim', `${p.mult}x · ${p.prob}%`));
+        ul.append(li);
+      });
+      c.append(ul, el('p', 'note', 'Picks treated as independent; same-game picks are not. One per player, at most 2 per game.'));
+      return c;
+    }));
+    // Table
+    const q = P6S.q.trim().toLowerCase();
+    const rows = P6.picks.map((p) => ({ ...p, edge: 100 * p.value - be })).filter((p) =>
+      (!q || (p.name + ' ' + p.team + ' ' + p.opp).toLowerCase().includes(q)) &&
+      (!P6S.stat || p.stat === P6S.stat) &&
+      (P6S.show === 'all' || (P6S.show === 'edges' ? p.agree && p.mult <= 2 && !p.promo
+        : P6S.show === 'std' ? p.mult === 1 : P6S.show === 'easy' ? p.mult < 1 : p.mult <= 2)));
+    const val = (p, k) => (k === 'szn' || k === 'l10' || k === 'l5' ? p[k][0] : k === 'flags' ? p.flags.length : p[k]);
+    rows.sort((a, b) => cmp(val(a, P6S.sort.key), val(b, P6S.sort.key), P6S.sort.dir));
+    const head = el('tr');
+    P6COLS.forEach((c) => {
+      const th = el('th', c.num ? 'num' : '', c.l);
+      th.tabIndex = 0;
+      if (c.t) th.title = c.t;
+      if (c.k === P6S.sort.key) th.setAttribute('aria-sort', P6S.sort.dir > 0 ? 'ascending' : 'descending');
+      const go = () => {
+        if (P6S.sort.key === c.k) P6S.sort.dir = -P6S.sort.dir; else P6S.sort = { key: c.k, dir: c.num ? -1 : 1 };
+        drawPick6();
+      };
+      th.addEventListener('click', go);
+      th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      head.append(th);
+    });
+    const thead = el('thead'); thead.append(head);
+    const body = el('tbody');
+    const shown = rows.slice(0, 600);
+    shown.forEach((p) => {
+      const tr = el('tr');
+      const key = `${p.hist}|${p.line}|${p.side}`;
+      const name = el('td', 'name sticky');
+      const b = el('button', 'pname', p.name);
+      b.type = 'button';
+      b.setAttribute('aria-expanded', String(P6S.open.has(key)));
+      b.addEventListener('click', () => { P6S.open.has(key) ? P6S.open.delete(key) : P6S.open.add(key); drawPick6(); });
+      name.append(b);
+      const hit = (h) => (h[0] == null ? '—' : `${h[0]}%`);
+      const sideTag = el('td'); sideTag.append(el('span', 'tag ' + (p.side === 'More' ? 't-good' : 't-bad'), p.side));
+      const edge = el('td', 'num ' + (p.edge >= 0 ? 'up' : 'dim'), (p.edge > 0 ? '+' : '') + p.edge.toFixed(1));
+      const med = el('td', 'num', String(p.median)); med.title = `10th–90th percentile: ${p.p10}–${p.p90}`;
+      const notes = el('td', 'txt'); notes.textContent = p.flags.join('; ') || (p.promo ? 'promo pick' : '—'); notes.title = p.flags.join('; ');
+      const szn = el('td', 'num', p.szn[0] == null ? '—' : `${p.szn[0]}% (${p.szn[1]})`);
+      tr.append(name, el('td', '', p.team), el('td', 'dim', p.opp), el('td', 'dim', p.tip.replace(/^0/, '')), el('td', '', p.stat),
+        el('td', 'num', String(p.line)), sideTag, el('td', 'num', p.mult + 'x'), el('td', 'num', p.implied.toFixed(1)),
+        el('td', 'num', p.model.toFixed(1)), szn, el('td', 'num', hit(p.l10)), el('td', 'num', hit(p.l5)),
+        el('td', 'num', p.prob.toFixed(1)), el('td', 'num', p.value.toFixed(2)), edge, med, notes);
+      body.append(tr);
+      if (P6S.open.has(key)) {
+        const d = el('tr', 'detail'); const td = el('td'); td.colSpan = P6COLS.length;
+        const box = el('div', 'dt-box');
+        const t = el('table', 'log-t');
+        const h = el('tr'); ['Date', 'Opp', 'MIN', p.stat, 'vs ' + p.line].forEach((x, i) => h.append(el('th', i >= 2 ? 'num' : '', x)));
+        const th2 = el('thead'); th2.append(h);
+        const tb = el('tbody');
+        (P6.hist[p.hist] || []).forEach(([date, opp, mins, v]) => {
+          const ok = p.side === 'More' ? v > p.line : v < p.line;
+          const r = el('tr');
+          r.append(el('td', '', date), el('td', 'dim', opp), el('td', 'num', String(mins)), el('td', 'num', String(v)), el('td', 'num ' + (ok ? 'up' : 'down'), ok ? 'hit' : 'miss'));
+          tb.append(r);
+        });
+        t.append(th2, tb);
+        const left = el('div');
+        left.append(el('h4', 'gl-h', 'Last 10 games'), t);
+        const right = el('div', 'dt-math');
+        right.append(el('h4', 'gl-h', 'How this pick is scored'));
+        const ol = el('ol');
+        [`DK implied: 50% ÷ ${p.mult}x = ${p.implied}%`,
+         `Model: ${p.model}% of 4,000 simulated games clear ${p.line} (projected ${p.proj_min} min; middle 80% of outcomes ${p.p10}–${p.p90})`,
+         `Season: cleared it in ${p.szn[0] ?? '—'}% of ${p.szn[1]} games; our estimate = 0.6 × ${p.model} + 0.4 × ${p.szn[0] ?? p.model} = ${p.ours}%`,
+         `Final: ${p.implied} + ${P6.trust} × (${p.ours} − ${p.implied}) = ${p.prob}%`,
+         `Value: ${p.prob}% × ${p.mult} = ${p.value.toFixed(3)} vs ${be}% break-even for ${P6S.size} picks → ${p.edge > 0 ? '+' : ''}${p.edge.toFixed(1)}`,
+         p.agree ? 'Model and season history both beat DK\u2019s price: counts as an edge.' : 'Model and season history don\u2019t both beat DK\u2019s price: not counted as an edge.']
+          .forEach((x) => ol.append(el('li', '', x)));
+        right.append(ol);
+        box.append(right, left);
+        td.append(box); d.append(td); body.append(d);
+      }
+    });
+    if (!rows.length) { const tr = el('tr'); const td = el('td', 'empty', 'No picks match.'); td.colSpan = P6COLS.length; tr.append(td); body.append(tr); }
+    $('t-p6').replaceChildren(thead, body);
+    $('p6-count').textContent = `${rows.length.toLocaleString()} picks` + (rows.length > shown.length ? ` (showing top ${shown.length})` : '');
+  }
+  if (P6) {
+    $('p6-q').addEventListener('input', (e) => { P6S.q = e.target.value; drawPick6(); });
+    $('p6-stat').addEventListener('change', (e) => { P6S.stat = e.target.value; drawPick6(); });
+    $('p6-show').addEventListener('change', (e) => { P6S.show = e.target.value; drawPick6(); });
+  }
+
   function drawAll() {
-    drawHeader(); drawWeights(); drawPlayers(); drawLineups(); drawInjuries();
+    drawHeader(); drawWeights(); drawPlayers(); drawLineups(); drawInjuries(); drawPick6();
     drawColPicker(); drawGlossary();
   }
   drawAll();
