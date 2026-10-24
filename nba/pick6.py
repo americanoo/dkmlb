@@ -53,7 +53,8 @@ USAGE_STATS = {"PTS", "AST", "3PM", "3PA", "FGM", "FGA", "FTM", "FTA", "TO"}  # 
 STATS = {
     "Points": ["PTS"], "Rebounds": ["REB"], "Assists": ["AST"], "3-Pointers Made": ["3PM"],
     "Pts + Rebs + Asts": ["PTS", "REB", "AST"], "Pts + Rebs": ["PTS", "REB"], "Pts + Asts": ["PTS", "AST"],
-    "Rebs + Asts": ["REB", "AST"], "Steals": ["STL"], "Blocks": ["BLK"], "Steals + Blocks": ["STL", "BLK"],
+    "Rebs + Asts": ["REB", "AST"], "Points + Rebounds": ["PTS", "REB"], "Points + Assists": ["PTS", "AST"],
+    "Assists + Rebounds": ["REB", "AST"], "Steals": ["STL"], "Blocks": ["BLK"], "Steals + Blocks": ["STL", "BLK"],
     "Blks + Stls": ["STL", "BLK"], "Turnovers": ["TO"], "Field Goals Made": ["FGM"],
     "Field Goals Attempted": ["FGA"], "Free Throws Made": ["FTM"], "3-Pointers Attempted": ["3PA"],
 }
