@@ -400,35 +400,77 @@ def log_run(data):
     return path
 
 
-def review():
-    """Grade every logged pick whose game is final, grouped the ways that decide the settings."""
+ESPN_SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={id}"
+
+
+def box_scores(date):
+    """{ESPN athlete id: box-score line} for every game on that date that is final."""
+    out = {}
+    board = dk_nba.get(dk_nba.ESPN_SCOREBOARD.format(date=date.replace("-", "")))
+    for ev in board.get("events", []):
+        if not ev["status"]["type"].get("completed"):
+            continue
+        for team in dk_nba.get(ESPN_SUMMARY.format(id=ev["id"]))["boxscore"]["players"]:
+            table = team["statistics"][0]
+            for a in table["athletes"]:
+                row = dict(zip(table["names"], a.get("stats") or []))
+                if a.get("didNotPlay") or not row:
+                    continue
+                try:
+                    fgm, fga = dk_nba.split_made_att(row["FG"])
+                    tpm, tpa = dk_nba.split_made_att(row["3PT"])
+                    ftm, fta = dk_nba.split_made_att(row["FT"])
+                    line = {
+                        "MIN": float(row["MIN"]), "PTS": int(row["PTS"]), "REB": int(row["REB"]), "AST": int(row["AST"]),
+                        "STL": int(row["STL"]), "BLK": int(row["BLK"]), "TO": int(row["TO"]), "3PM": tpm, "3PA": tpa,
+                        "FGM": fgm, "FGA": fga, "FTM": ftm, "FTA": fta,
+                    }
+                except (KeyError, ValueError):
+                    continue  # "-" placeholders: he didn't play
+                if line["MIN"] > 0:
+                    out[a["athlete"]["id"]] = line
+    return out
+
+
+def grade():
+    """Every logged pick whose game is final, with hit / miss, from official box scores.
+    Picks for players who didn't play are left out (Pick6 voids them)."""
     os, glob = __import__("os"), __import__("glob")
-    graded = []
+    boxes, graded = {}, []
     for path in sorted(glob.glob(os.path.join(LOG_DIR, "pick6_*.json"))):
         for p in json.load(open(path))["picks"]:
-            if not p["espn_id"]:
+            if p["date"] not in boxes:
+                try:
+                    boxes[p["date"]] = box_scores(p["date"])
+                except Exception as e:
+                    print(f"warning: box scores for {p['date']} not loaded: {e}", file=sys.stderr)
+                    boxes[p["date"]] = {}
+            g = boxes[p["date"]].get(p["espn_id"])
+            if g is None:
                 continue
-            try:
-                games, _ = dk_nba.parse_gamelog(dk_nba.get(dk_nba.ESPN_GAMELOG.format(id=p["espn_id"])))
-            except Exception:
-                continue
-            day = datetime.strptime(p["date"], "%Y-%m-%d").date()
-            g = next((g for g in games if (datetime.fromisoformat(g["date"].replace("Z", "+00:00"))
-                                           - timedelta(hours=5)).date() == day), None)
-            if g is None or g["MIN"] == 0:
-                continue  # not final yet, or he didn't play (Pick6 voids those)
             v = stat_value(g, STATS[p["stat"]])
-            graded.append({**p, "hit": v > p["line"] if p["side"] == "More" else v < p["line"]})
+            graded.append({**p, "actual": v, "hit": v > p["line"] if p["side"] == "More" else v < p["line"]})
+    return graded
+
+
+def review():
+    """Grade logged picks, grouped the ways that decide the settings, plus a fade test."""
+    graded = grade()
     if not graded:
         print("no logged picks with final results yet")
         return
+    days = sorted({r["date"] for r in graded})
+    players = len({(r["name"], r["date"]) for r in graded})
 
-    def show(label, rows):
+    def show(label, rows, implied=True):
         if rows:
             hit = sum(r["hit"] for r in rows) / len(rows)
-            print(f"  {label:34} n={len(rows):<5} hit {100 * hit:5.1f}%   DK implied {sum(r['implied'] for r in rows) / len(rows):5.1f}%"
-                  f"   ours {sum(r['ours'] for r in rows) / len(rows):5.1f}%   final {sum(r['prob'] for r in rows) / len(rows):5.1f}%")
-    print(f"{len(graded)} graded picks")
+            extra = (f"   DK implied {sum(r['implied'] for r in rows) / len(rows):5.1f}%   ours {sum(r['ours'] for r in rows) / len(rows):5.1f}%"
+                     f"   final {sum(r['prob'] for r in rows) / len(rows):5.1f}%") if implied else ""
+            print(f"  {label:44} n={len(rows):<5} hit {100 * hit:5.1f}%{extra}")
+    print(f"{len(graded)} graded picks, {players} player-games, {len(days)} day(s): {', '.join(days)}")
+    if len(days) < 10:
+        print("small sample: one player's night moves all of his lines together, so treat this as noise until ~10+ days")
     print("by line type (does DK's price hold up?):")
     for lo, hi, label in ((0, 0.95, "easier lines (<1x)"), (0.95, 1.05, "standard lines (1x)"), (1.05, 2.0, "harder lines (1-2x)"), (2.0, 100, "long shots (>2x)")):
         show(label, [r for r in graded if lo <= r["mult"] < hi])
@@ -436,8 +478,27 @@ def review():
     show("agree, value above 3-pick break-even", [r for r in graded if r["agree"] and 100 * r["value"] > 55])
     show("agree, any", [r for r in graded if r["agree"]])
     show("everything else", [r for r in graded if not r["agree"]])
+
+    # Fade test on standard lines, where both sides are offered at 1x: does the side our
+    # estimate prefers win more or less than the other side?
+    std = {}
+    for r in graded:
+        if r["mult"] == 1:
+            std.setdefault((r["name"], r["date"], r["stat"], r["line"]), {})[r["side"]] = r
+    pairs = [v for v in std.values() if "More" in v and "Less" in v]
+    print("fade test, standard lines with both sides (1x):")
+    if pairs:
+        ours = [max(v.values(), key=lambda r: r["ours"]) for v in pairs]
+        fade = [min(v.values(), key=lambda r: r["ours"]) for v in pairs]
+        strong = [o for o in ours if o["ours"] >= 60]
+        strong_fade = [min(v.values(), key=lambda r: r["ours"]) for v in pairs if max(r["ours"] for r in v.values()) >= 60]
+        show("side our estimate prefers", ours, implied=False)
+        show("opposite side (fade)", fade, implied=False)
+        show("our side when we're 60%+ on it", strong, implied=False)
+        show("fading those", strong_fade, implied=False)
     print("If 'agree' picks hit above their DK implied rate over a few hundred picks, TRUST can go up;\n"
-          "if they don't beat DK implied, our estimate isn't adding information and TRUST should go down.")
+          "if they don't beat DK implied, our estimate isn't adding information and TRUST should go down.\n"
+          "Fading only makes sense if 'opposite side' beats 50% over many days, not one night.")
 
 
 def main():
