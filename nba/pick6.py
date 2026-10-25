@@ -309,7 +309,19 @@ def evaluate(lines, pool, season):
             "flags": flags,
         })
     flag_role_changes(out, pool)
+    add_opposites(out)
     return out
+
+
+def add_opposites(picks):
+    """The other side of each pick where Pick6 offers it: the standard (1x) line's other side."""
+    std = {}
+    for p in picks:
+        if p["mult"] == 1:
+            std.setdefault((p["dk_id"], p["stat"]), {})[p["side"]] = p
+    for p in picks:
+        o = std.get((p["dk_id"], p["stat"]), {}).get("Less" if p["side"] == "More" else "More")
+        p["other"] = {"side": o["side"], "line": o["line"], "prob": o["prob"], "implied": o["implied"]} if o else None
 
 
 def flag_role_changes(picks, pool):
@@ -451,6 +463,33 @@ def grade():
             v = stat_value(g, STATS[p["stat"]])
             graded.append({**p, "actual": v, "hit": v > p["line"] if p["side"] == "More" else v < p["line"]})
     return graded
+
+
+def record():
+    """Graded results so far, compact, for the board: is the model beating DK's price?"""
+    graded = grade()
+    if not graded:
+        return None
+
+    def group(rows):
+        if not rows:
+            return None
+        return {"n": len(rows), "hit": round(100 * sum(r["hit"] for r in rows) / len(rows), 1),
+                "implied": round(sum(r["implied"] for r in rows) / len(rows), 1)}
+    std = {}
+    for r in graded:
+        if r["mult"] == 1:
+            std.setdefault((r["name"], r["date"], r["stat"], r["line"]), {})[r["side"]] = r
+    pairs = [v for v in std.values() if "More" in v and "Less" in v]
+    return {
+        "days": sorted({r["date"] for r in graded}),
+        "player_games": len({(r["name"], r["date"]) for r in graded}),
+        "picks": len(graded),
+        "edges": group([r for r in graded if r["agree"] and r["mult"] <= MAX_ENTRY_MULT]),
+        "all": group(graded),
+        "ours": group([max(v.values(), key=lambda r: r["ours"]) for v in pairs]),
+        "fade": group([min(v.values(), key=lambda r: r["ours"]) for v in pairs]),
+    }
 
 
 def review():

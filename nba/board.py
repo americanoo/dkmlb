@@ -223,6 +223,7 @@ def export_pick6():
         for k in ("espn_id", "dk_id", "date"):
             p.pop(k, None)
     data["hist"] = hist
+    data["record"] = pick6.record()
     return data
 
 

@@ -113,6 +113,8 @@ tr.detail:hover>td{background:var(--ground)}
 .dt-log .note{margin:6px 0 0;font-size:12px}
 .ls-h{margin:14px 0 6px}
 .p6-sizes{padding-block:0 12px}
+.p6-record{margin-bottom:12px}
+.p6-record .log-t{margin:4px 0 8px}
 ul.p6-how{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;max-width:96ch}
 ul.p6-how code{font-size:12px}
 ul.ls{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:12.5px}
@@ -243,7 +245,9 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
         <li><b>Assumption</b>: line multipliers multiply the entry's payout. Check the payout on your pick slip; if it differs, tell Claude.</li>
         <li>Every run is logged; <code>python3 nba/pick6.py --review</code> grades them after the games so the trust setting can be earned, not guessed.</li>
       </ul></div></details>
-    <div class="c-grid" id="p6-entries"></div>
+    <div class="c-card p6-record" id="p6-record"></div>
+    <details class="dsec" id="p6-entries-d"><summary><span class="ds-t">Model entries</span><span class="ds-h">Tracking only until the record above shows the model beating DK's prices over 10+ days</span></summary>
+      <div class="ds-b"><div class="c-grid" id="p6-entries"></div></div></details>
     <div class="tools">
       <input type="search" id="p6-q" placeholder="Search player or team" aria-label="Search Pick6">
       <select id="p6-stat" aria-label="Stat"><option value="">All stats</option></select>
@@ -862,6 +866,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     { k: 'value', l: 'Value', num: 1, t: 'Final % × multiplier. Compare with the break-even for your entry size.' },
     { k: 'edge', l: 'vs BE', num: 1, t: 'Value minus the per-pick break-even for the selected entry size, in points.' },
     { k: 'median', l: 'Proj', num: 1, t: 'Median of the simulated stat line (10th–90th percentile on hover).' },
+    { k: 'other', l: 'Opposite', t: 'The other side of this stat at the standard (1x) line, where Pick6 offers it, with its final %.' },
     { k: 'flags', l: 'Notes' },
   ];
   function drawPick6() {
@@ -871,6 +876,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     $('p6-head').textContent = `${P6.group.label} · first tip ${P6.group.first_tip} · ${P6.picks.length.toLocaleString()} lines scored. Break-even per pick for a ${P6S.size}-pick entry: ${be}%.` +
       (P6.unmapped.length ? ` Not modeled: ${P6.unmapped.join(', ')}.` : '');
     $('p6-trust').textContent = P6.trust;
+    drawRecord();
     $('p6-sizes').replaceChildren(...Object.keys(P6.breakeven).map((n) => {
       const pay = P6.payouts[n];
       const tiers = Object.entries(pay).sort((a, b) => b[0] - a[0]).map(([k, v]) => `${k}/${n} ${v}x`).join(', ');
@@ -906,7 +912,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       (!P6S.stat || p.stat === P6S.stat) &&
       (P6S.show === 'all' || (P6S.show === 'edges' ? p.agree && p.mult <= 2 && !p.promo
         : P6S.show === 'std' ? p.mult === 1 : P6S.show === 'easy' ? p.mult < 1 : p.mult <= 2)));
-    const val = (p, k) => (k === 'szn' || k === 'l10' || k === 'l5' ? p[k][0] : k === 'flags' ? p.flags.length : p[k]);
+    const val = (p, k) => (k === 'szn' || k === 'l10' || k === 'l5' ? p[k][0] : k === 'flags' ? p.flags.length : k === 'other' ? (p.other ? p.other.prob : null) : p[k]);
     rows.sort((a, b) => cmp(val(a, P6S.sort.key), val(b, P6S.sort.key), P6S.sort.dir));
     const head = el('tr');
     P6COLS.forEach((c) => {
@@ -943,7 +949,8 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       tr.append(name, el('td', '', p.team), el('td', 'dim', p.opp), el('td', 'dim', p.tip.replace(/^0/, '')), el('td', '', p.stat),
         el('td', 'num', String(p.line)), sideTag, el('td', 'num', p.mult + 'x'), el('td', 'num', p.implied.toFixed(1)),
         el('td', 'num', p.model.toFixed(1)), szn, el('td', 'num', hit(p.l10)), el('td', 'num', hit(p.l5)),
-        el('td', 'num', p.prob.toFixed(1)), el('td', 'num', p.value.toFixed(2)), edge, med, notes);
+        el('td', 'num', p.prob.toFixed(1)), el('td', 'num', p.value.toFixed(2)), edge, med,
+        el('td', p.other ? '' : 'dim', p.other ? `${p.other.side} ${p.other.line} · ${p.other.prob.toFixed(1)}%` : 'not offered'), notes);
       body.append(tr);
       if (P6S.open.has(key)) {
         const d = el('tr', 'detail'); const td = el('td'); td.colSpan = P6COLS.length;
@@ -979,6 +986,29 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     if (!rows.length) { const tr = el('tr'); const td = el('td', 'empty', 'No picks match.'); td.colSpan = P6COLS.length; tr.append(td); body.append(tr); }
     $('t-p6').replaceChildren(thead, body);
     $('p6-count').textContent = `${rows.length.toLocaleString()} picks` + (rows.length > shown.length ? ` (showing top ${shown.length})` : '');
+  }
+  function drawRecord() {
+    const R = P6.record, box = $('p6-record');
+    box.replaceChildren(el('h3', '', 'Record so far'));
+    if (!R) { box.append(el('p', 'note', 'No graded picks yet. Results appear here the day after games are played.')); return; }
+    const days = R.days.length;
+    box.append(el('p', 'lu-sub', `${R.picks.toLocaleString()} graded picks · ${R.player_games} player-games · ${days} day${days > 1 ? 's' : ''} (${R.days[0]}${days > 1 ? ' to ' + R.days[days - 1] : ''})`));
+    const t = el('table', 'log-t');
+    const h = el('tr'); ['', 'Picks', 'Hit', 'DK price', 'vs price'].forEach((x, i) => h.append(el('th', i ? 'num' : '', x)));
+    const th = el('thead'); th.append(h);
+    const tb = el('tbody');
+    [['Model edges (≤2x)', R.edges], ['Model side, standard lines', R.ours], ['Opposite side (fade), standard lines', R.fade], ['Every line', R.all]].forEach(([label, g]) => {
+      if (!g) return;
+      const d = g.hit - g.implied;
+      const tr = el('tr');
+      tr.append(el('td', '', label), el('td', 'num', String(g.n)), el('td', 'num', g.hit.toFixed(1) + '%'), el('td', 'num', g.implied.toFixed(1) + '%'),
+        el('td', 'num ' + (d > 0 ? 'up' : d < 0 ? 'down' : ''), (d > 0 ? '+' : '') + d.toFixed(1)));
+      tb.append(tr);
+    });
+    t.append(th, tb);
+    box.append(t, el('p', 'note', days < 10
+      ? `Too early to trust: ${days} day${days > 1 ? 's' : ''} of results, and one player's night moves all of his lines together. Treat picks as tracking only until 10+ days show the model (or the fade) consistently beating DK's price.`
+      : 'Picks beat DK\u2019s price only where "vs price" stays positive across days.'));
   }
   if (P6) {
     $('p6-q').addEventListener('input', (e) => { P6S.q = e.target.value; drawPick6(); });
