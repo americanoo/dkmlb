@@ -113,6 +113,7 @@ tr.detail:hover>td{background:var(--ground)}
 .dt-log .note{margin:6px 0 0;font-size:12px}
 .ls-h{margin:14px 0 6px}
 .p6-sizes{padding-block:0 12px}
+#p-pick6 [hidden]{display:none!important}
 .p6-record{margin-bottom:12px}
 .p6-record .log-t{margin:4px 0 8px}
 ul.p6-how{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;max-width:96ch}
@@ -872,6 +873,15 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
   function drawPick6() {
     if (!P6) return;
     $('tab-pick6').hidden = false;
+    if (P6.unavailable) {
+      // No lines posted: show why, and the graded record, and nothing else.
+      $('p6-head').textContent = P6.unavailable + '. Rebuild the board once Pick6 posts lines.';
+      ['p6-sizes', 'p6-how', 'p6-entries-d'].forEach((id) => { $(id).hidden = true; });
+      $('t-p6').parentElement.hidden = true;
+      document.querySelector('#p-pick6 .tools').hidden = true;
+      if (P6.record) drawRecord(); else $('p6-record').hidden = true;
+      return;
+    }
     const be = P6.breakeven[String(P6S.size)];
     $('p6-head').textContent = `${P6.group.label} · first tip ${P6.group.first_tip} · ${P6.picks.length.toLocaleString()} lines scored. Break-even per pick for a ${P6S.size}-pick entry: ${be}%.` +
       (P6.unmapped.length ? ` Not modeled: ${P6.unmapped.join(', ')}.` : '');

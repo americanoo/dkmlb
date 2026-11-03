@@ -241,15 +241,16 @@ def main():
     if with_pick6:
         try:
             board["pick6"] = export_pick6()
-        except Exception as e:  # the DFS board still publishes without Pick6
-            print(f"warning: Pick6 not added: {e}", file=sys.stderr)
+        except Exception as e:  # the DFS board still publishes; the tab keeps the graded record
+            print(f"warning: Pick6 lines not added: {e}", file=sys.stderr)
+            board["pick6"] = {"unavailable": str(e), "record": pick6.record()}
     data = json.dumps(board, separators=(",", ":")).replace("</", "<\\/")
     with open(TEMPLATE) as f:
         page = f.read().replace("/*__DATA__*/", data)
     with open(out_path, "w") as f:
         f.write(page)
     if "pick6" in board:
-        print(f"Pick6: {len(board['pick6']['picks'])} picks scored")
+        print(f"Pick6: {board['pick6'].get('unavailable') or str(len(board['pick6']['picks'])) + ' picks scored'}")
     for o in slates:
         print(f"{o['label']}: draft group {o['draft_group']}, {len(o['players'])} players, {len(o['lineups'])} lineups")
 

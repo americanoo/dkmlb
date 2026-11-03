@@ -98,7 +98,9 @@ def fetch_board():
     """(pick group, payout packages, [pickCardsResponse per category])."""
     home = decode_stream(dk_nba.get(f"{PICK6}/?sport=NBA", as_json=False))
     shared = home["routes/_homeShared"]
-    group = shared["selectedPickGroup"]
+    group = shared.get("selectedPickGroup")
+    if not shared.get("hasPicksAvailable") or not group:
+        raise RuntimeError("Pick6 has no NBA lines posted right now (no games today, or the next slate isn't up yet)")
     first = cards_of(home)
     responses = [first]
     for cid in first["orderedPickCategoryIds"]:
