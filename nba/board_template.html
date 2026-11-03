@@ -113,6 +113,52 @@ tr.detail:hover>td{background:var(--ground)}
 .dt-log .note{margin:6px 0 0;font-size:12px}
 .ls-h{margin:14px 0 6px}
 .p6-sizes{padding-block:0 12px}
+/* lineup builder: a fixed side panel on wide screens, a bottom sheet on narrow ones */
+.lb{position:fixed;z-index:7;right:max(16px,env(safe-area-inset-right,0px));top:var(--lb-top,160px);bottom:calc(16px + env(safe-area-inset-bottom,0px));width:340px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px 14px;box-shadow:0 8px 24px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:10px}
+.lb[hidden]{display:none!important}
+@media (min-width:1100px){body.lb-on main.wrap{padding-right:calc(340px + 32px)}}
+@media (max-width:1099px){.lb{left:max(16px,env(safe-area-inset-left,0px));width:auto;top:auto;max-height:72vh;bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+.lb-fab{position:fixed;z-index:8;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));font:600 14px/1 var(--display);letter-spacing:.05em;text-transform:uppercase;background:var(--accent);color:var(--ground);border:0;border-radius:4px;padding:11px 14px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.lb-fab:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.lb-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.lb-head h2{font:700 18px/1 var(--display);letter-spacing:.05em;text-transform:uppercase;margin:0}
+.lb-head span{color:var(--muted);font-size:12px}
+.lb-sal{display:grid;gap:5px;font-size:12.5px;color:var(--muted)}
+.lb-sal b{color:var(--ink);font-weight:600}
+.lb-bar{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.lb-bar i{display:block;height:100%;background:var(--accent)}
+.lb-bar.over i{background:var(--bad)}
+ol.lb-slots{list-style:none;margin:0;padding:0;display:grid;gap:0;border-top:1px solid var(--line)}
+ol.lb-slots li{display:grid;grid-template-columns:3.6ch minmax(0,1fr) auto auto 22px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+ol.lb-slots .sl{font:600 12px var(--display);letter-spacing:.06em;color:var(--muted)}
+ol.lb-slots .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+ol.lb-slots .nm small{font-weight:400;color:var(--muted);margin-left:4px}
+ol.lb-slots .empty-slot .nm{color:var(--faint);font-weight:400}
+ol.lb-slots .n{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px}
+ol.lb-slots .n b{color:var(--ink);font-weight:600}
+.lb-x{background:none;border:0;color:var(--faint);cursor:pointer;font-size:16px;line-height:1;padding:2px}
+.lb-x:hover{color:var(--bad)}
+.lb-tot{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.lb-tot div{display:flex;flex-direction:column}
+.lb-tot span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.lb-tot b{font:700 18px/1.1 var(--display)}
+.lb-msg{margin:0;font-size:12.5px;color:var(--muted);line-height:1.4}
+.lb-msg.warn{color:var(--warn)}
+.lb-msg.bad{color:var(--bad)}
+.lb-actions{display:flex;flex-wrap:wrap;gap:6px}
+.lb-actions .btn{padding:6px 10px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--ground)}
+.lb textarea{width:100%;height:90px;font:12px ui-monospace,Menlo,monospace;color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:4px;padding:6px}
+.lb details summary{cursor:pointer;font-size:13px;font-weight:600}
+ol.lb-saved{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px;font-size:12.5px}
+ol.lb-saved li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;border-bottom:1px solid var(--line);padding-bottom:5px}
+ol.lb-saved li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#t-players tbody tr.pick-row{cursor:pointer}
+#t-players tbody tr.in-lu td{background:var(--accent-soft)}
+#t-players tbody tr.no-fit td{opacity:.45}
+#t-players tbody tr.in-lu td.sticky{box-shadow:inset 3px 0 0 var(--accent)}
+button.dt-tog{background:none;border:1px solid var(--line);border-radius:3px;color:var(--muted);cursor:pointer;font-size:10px;line-height:1;padding:3px 4px;margin-right:6px;vertical-align:1px}
+button.dt-tog:hover,button.dt-tog[aria-expanded="true"]{color:var(--accent);border-color:var(--accent)}
 #p-pick6 [hidden]{display:none!important}
 .p6-record{margin-bottom:12px}
 .p6-record .log-t{margin:4px 0 8px}
@@ -169,6 +215,11 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
 .c-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px 14px;min-width:0}
 .c-card h3{font:700 17px/1 var(--display);letter-spacing:.05em;text-transform:uppercase;margin:0 0 6px}
 .lu-sub{color:var(--muted);font-size:12.5px;margin:0 0 8px}
+.tw-note{color:var(--muted);font-size:13px;margin:0 0 12px}
+.tw-note summary{cursor:pointer}
+.tw-note p{margin:6px 0 0;max-width:110ch;line-height:1.45}
+.lu-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lu-top .btn{padding:5px 9px;font-size:12px}
 .lu-sub b{color:var(--ink)}
 .lu-t{font-size:13px}
 .lu-t td,.lu-t th{padding:3px 8px 3px 0;border:0;position:static;background:none;cursor:default}
@@ -212,7 +263,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       <span class="count" id="count"></span>
     </div>
     <details class="dsec" id="gl"><summary><span class="ds-t">Column definitions</span><span class="ds-h">What every number means and how it's calculated. Hover any header for the same text.</span></summary><div class="ds-b" id="gl-body"></div></details>
-    <p class="note" id="tw-note" hidden></p>
+    <details class="tw-note" id="tw-note" hidden></details>
     <div class="scroll"><table id="t-players"></table></div>
     <div class="legend">
       <span><span class="tag t-good">Top-rated</span>85+</span><span><span class="tag t-strong">Strong</span>70–84</span><span><span class="tag t-none">Context</span>55–69</span><span><span class="tag t-none" style="opacity:.6">Lower</span>under 55</span>
@@ -264,6 +315,9 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     <div class="scroll"><table id="t-p6"></table></div>
   </section>
 </main>
+
+<aside class="lb" id="lb" aria-label="Lineup builder"></aside>
+<button class="lb-fab" id="lb-fab" type="button" aria-controls="lb"></button>
 
 <script id="data" type="application/json">/*__DATA__*/</script>
 <script>
@@ -576,12 +630,14 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     switch (c.k) {
       case 'name': {
         td.className = 'name sticky';
-        const b = el('button', 'pname');
+        const open = S.open.has(r.name);
+        const b = el('button', 'dt-tog', open ? '▾' : '▸');
         b.type = 'button';
-        b.setAttribute('aria-expanded', String(S.open.has(r.name)));
-        b.append(el('span', 'rk', '#' + rankOf.get(r.name)), document.createTextNode(r.name));
-        b.addEventListener('click', () => { S.open.has(r.name) ? S.open.delete(r.name) : S.open.add(r.name); drawPlayers(true); });
-        td.append(b, el('span', 'pos', r.pos));
+        b.setAttribute('aria-expanded', String(open));
+        b.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} details for ${r.name}`);
+        b.title = 'Game log and projection math';
+        b.addEventListener('click', (e) => { e.stopPropagation(); open ? S.open.delete(r.name) : S.open.add(r.name); drawPlayers(true); });
+        td.append(b, el('span', 'rk', '#' + rankOf.get(r.name)), document.createTextNode(r.name), el('span', 'pos', r.pos));
         return td;
       }
       case 'rating': {
@@ -694,6 +750,10 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
   function drawPlayers(keepOrder) {
     const s = slate();
     const all = s.players.map(rate);
+    ratedById = new Map(all.map((r) => [r.dk_id, r]));
+    const lineupIds = lbIds();
+    const lineupPlayers = lineupIds.map((id) => ratedById.get(id)).filter(Boolean);
+    const salaryLeft = CAP - lineupPlayers.reduce((t, p) => t + p.salary, 0);
     rankOf = new Map(all.slice().sort((a, b) => b.rating - a.rating).map((r, i) => [r.name, i + 1]));
     const q = S.q.trim().toLowerCase();
     let rows = all.filter((r) =>
@@ -737,7 +797,13 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     const thead = el('thead'); thead.append(groupRow, head);
     const body = el('tbody');
     rows.forEach((r) => {
-      const tr = el('tr');
+      const inLineup = lineupIds.includes(r.dk_id);
+      const fits = inLineup || (lineupPlayers.length < 8 && r.salary <= salaryLeft && canFit([...lineupPlayers, r]));
+      const tr = el('tr', 'pick-row' + (inLineup ? ' in-lu' : fits ? '' : ' no-fit'));
+      tr.tabIndex = 0;
+      tr.title = inLineup ? 'In your lineup: click to remove' : fits ? 'Click to add to your lineup' : "Doesn't fit: no open slot for his positions, or over the salary left";
+      tr.addEventListener('click', () => lbToggle(r));
+      tr.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === tr) { e.preventDefault(); lbToggle(r); } });
       cols.forEach((c, i) => {
         const td = cell(c, r);
         if (i && cols[i - 1].g !== c.g) td.classList.add('g-start');
@@ -755,8 +821,11 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     $('count').textContent = `${rows.length} of ${all.length} players`;
     const tw = $('tw-note');
     tw.hidden = !s.two_way?.length && !s.two_way_unchecked?.length;
-    tw.textContent = (s.two_way?.length ? `Left out, two-way contracts (they rarely play unless the team is short-handed): ${s.two_way.join(', ')}.` : '') +
-      (s.two_way_unchecked?.length ? ` Couldn't check two-way contracts for ${s.two_way_unchecked.join(', ')}.` : '');
+    const twSummary = (s.two_way?.length ? `${s.two_way.length} two-way contract players left out (they rarely play unless the team is short-handed)` : '') +
+      (s.two_way_unchecked?.length ? `${s.two_way?.length ? '. ' : ''}Couldn't check two-way contracts for ${s.two_way_unchecked.join(', ')}` : '');
+    const twOpen = tw.open;
+    tw.replaceChildren(el('summary', '', twSummary), el('p', '', (s.two_way || []).join(', ')));
+    tw.open = twOpen;
   }
 
   $('q').addEventListener('input', (e) => { S.q = e.target.value; drawPlayers(); });
@@ -770,7 +839,19 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     const s = slate();
     $('lineups').replaceChildren(...s.lineups.map((l, i) => {
       const card = el('div', 'c-card');
-      card.append(el('h3', '', 'Lineup ' + (i + 1)));
+      const top = el('div', 'lu-top');
+      top.append(el('h3', '', 'Lineup ' + (i + 1)));
+      const load = el('button', 'btn', 'Load into builder');
+      load.type = 'button';
+      load.addEventListener('click', () => {
+        const ids = l.slots.map((x) => slate().players.find((p) => p.name === x.name && p.team === x.team)?.dk_id).filter(Boolean);
+        lbSet(ids);
+        lbMessage(`Loaded Lineup ${i + 1}.`);
+        setBuilderOpen(true);
+        drawPlayers(true); drawBuilder();
+      });
+      top.append(load);
+      card.append(top);
       const sub = el('p', 'lu-sub');
       [['Avg rating', fmt1(l.rating)], ['Median', fmt1(l.median)], [`Ceiling p${s.ceiling_pct}`, fmt1(l.ceiling)], ['Salary', money(l.salary)]]
         .forEach(([k, v], j) => { if (j) sub.append(' · '); sub.append(k + ' '); sub.append(el('b', '', v)); });
@@ -1026,8 +1107,223 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     $('p6-show').addEventListener('change', (e) => { P6S.show = e.target.value; drawPick6(); });
   }
 
+  // ---- lineup builder ----
+  const SLOTS = ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'UTIL'];
+  const FLEX = ['UTIL', 'F', 'G'];
+  const CAP = 50000;
+  const LB_STORE = 'nba-lineup-builder-v1';
+  let ratedById = new Map();
+  let lbNote = { text: '', cls: '' };
+  const LB = (() => { try { return JSON.parse(localStorage.getItem(LB_STORE)) || {}; } catch (e) { return {}; } })();
+  LB.lineups = LB.lineups || {};
+  LB.saved = LB.saved || {};
+  if (LB.open === undefined) LB.open = window.innerWidth >= 1100;
+  const lbSave = () => { try { localStorage.setItem(LB_STORE, JSON.stringify(LB)); } catch (e) {} };
+  const dg = () => String(slate().draft_group);
+  const lbIds = () => LB.lineups[dg()] || [];
+  const lbSet = (ids) => { LB.lineups[dg()] = ids; lbSave(); };
+  const lbMessage = (text, cls = '') => { lbNote = { text, cls }; };
+  const slotsFor = (p) => [...p.pos.split('/'), 'UTIL'];
+  const tipOf = (p) => {
+    const m = /^(\d+):(\d+)(AM|PM)$/.exec(p.time || '');
+    return m ? ((Number(m[1]) % 12) + (m[3] === 'PM' ? 12 : 0)) * 60 + Number(m[2]) : 0;
+  };
+
+  // Can these players fill distinct slots? (bipartite matching, fast enough for every row)
+  function canFit(ps) {
+    const owner = {};
+    const tryPlace = (i, seen) => {
+      for (const s of slotsFor(ps[i])) {
+        if (seen.has(s)) continue;
+        seen.add(s);
+        if (owner[s] === undefined || tryPlace(owner[s], seen)) { owner[s] = i; return true; }
+      }
+      return false;
+    };
+    return ps.every((_, i) => tryPlace(i, new Set()));
+  }
+
+  // Best slot arrangement: while building, keep the flexible slots open (UTIL most, then G/F);
+  // when full, the latest tips go in UTIL, F, G for late swap (the model's lineups do the same).
+  function arrange(ps) {
+    let best = null, bestKey = null;
+    const cur = {};
+    const keyOf = () => {
+      const open = [!cur.UTIL ? 1 : 0, (!cur.F ? 1 : 0) + (!cur.G ? 1 : 0)];
+      const tips = FLEX.map((s) => (cur[s] ? tipOf(cur[s]) : -1));
+      return [...open, ...tips.slice().sort((a, b) => b - a), ...tips];
+    };
+    const better = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
+    (function place(i) {
+      if (i === ps.length) {
+        const k = keyOf();
+        if (!best || better(k, bestKey)) { best = { ...cur }; bestKey = k; }
+        return;
+      }
+      for (const s of slotsFor(ps[i])) if (!cur[s]) { cur[s] = ps[i]; place(i + 1); delete cur[s]; }
+    })(0);
+    return best;
+  }
+
+  function lbToggle(r) {
+    const ids = lbIds();
+    if (ids.includes(r.dk_id)) {
+      lbSet(ids.filter((x) => x !== r.dk_id));
+      lbMessage(`Removed ${r.name}.`);
+    } else {
+      const ps = [...ids.map((id) => ratedById.get(id)).filter(Boolean), r];
+      const used = ps.reduce((t, p) => t + p.salary, 0);
+      if (ps.length > 8) lbMessage('Lineup is full. Remove a player first.', 'bad');
+      else if (used > CAP) lbMessage(`${r.name} puts you ${money(used - CAP)} over the cap.`, 'bad');
+      else if (!canFit(ps)) lbMessage(`No open slot fits ${r.name} (${r.pos}). Remove someone at those positions first.`, 'bad');
+      else { lbSet([...ids, r.dk_id]); lbMessage(`Added ${r.name}.`); }
+    }
+    drawPlayers(true);
+    drawBuilder();
+  }
+
+  const dkCsv = (lineups) => [SLOTS.join(','), ...lineups.map((slots) => SLOTS.map((s) => slots[s]?.dk_id ?? '').join(','))].join('\n');
+
+  function copyText(text, label) {
+    const box = $('lb-copy');
+    const fallback = () => { box.hidden = false; box.value = text; box.select(); lbMessage(`Select-all copy didn't work here: the ${label} is in the box below, already selected.`, 'warn'); drawBuilder(true); };
+    try {
+      navigator.clipboard.writeText(text).then(() => { lbMessage(`Copied ${label}. In DraftKings: Lineups → Upload lineups, paste into the CSV template.`); drawBuilder(); }, fallback);
+    } catch (e) { fallback(); }
+  }
+
+  function setBuilderOpen(open) {
+    LB.open = open;
+    lbSave();
+    $('lb').hidden = !open;
+    document.body.classList.toggle('lb-on', open);
+    drawFab();
+  }
+
+  function drawFab() {
+    const ps = lbIds().map((id) => ratedById.get(id)).filter(Boolean);
+    const left = CAP - ps.reduce((t, p) => t + p.salary, 0);
+    $('lb-fab').textContent = LB.open ? 'Hide lineup' : `Lineup ${ps.length}/8 · ${money(left)} left`;
+    $('lb-fab').setAttribute('aria-expanded', String(LB.open));
+  }
+
+  function drawBuilder(keepCopyBox) {
+    const box = $('lb');
+    const head = document.querySelector('header.top');
+    if (head) box.style.setProperty('--lb-top', Math.round(head.getBoundingClientRect().bottom + 12) + 'px');
+    const ps = lbIds().map((id) => ratedById.get(id)).filter(Boolean);
+    const slots = arrange(ps) || {};
+    const used = ps.reduce((t, p) => t + p.salary, 0);
+    const left = CAP - used;
+    const open = SLOTS.filter((s) => !slots[s]);
+
+    const h = el('div', 'lb-head');
+    h.append(el('h2', '', 'Lineup builder'), el('span', '', slate().label.split(' · ')[0]));
+
+    const sal = el('div', 'lb-sal');
+    const line = el('div');
+    line.append(el('b', '', money(used)), ' used · ', el('b', '', money(left)), ' left' + (open.length ? ` · ${money(Math.floor(left / open.length))} per open slot` : ''));
+    const bar = el('div', 'lb-bar' + (used > CAP ? ' over' : ''));
+    const fill = el('i'); fill.style.width = Math.min(100, (100 * used) / CAP) + '%'; bar.append(fill);
+    sal.append(line, bar);
+
+    const list = el('ol', 'lb-slots');
+    SLOTS.forEach((s) => {
+      const p = slots[s];
+      const li = el('li', p ? '' : 'empty-slot');
+      li.append(el('span', 'sl', s));
+      const nm = el('span', 'nm', p ? p.name : 'Click a player to add');
+      if (p) nm.append(el('small', '', `${p.team} · ${p.time.replace(/^0/, '')}`));
+      li.append(nm);
+      li.append(el('span', 'n', p ? money(p.salary) : ''));
+      const pr = el('span', 'n'); if (p) pr.append(el('b', '', fmt1(p.median))); li.append(pr);
+      if (p) {
+        const x = el('button', 'lb-x', '×');
+        x.type = 'button';
+        x.setAttribute('aria-label', 'Remove ' + p.name);
+        x.addEventListener('click', () => lbToggle(p));
+        li.append(x);
+      } else li.append(el('span'));
+      list.append(li);
+    });
+
+    const tot = el('div', 'lb-tot');
+    const games = new Set(ps.map((p) => p.game)).size;
+    [['Proj', fmt1(ps.reduce((t, p) => t + p.median, 0))], ['Ceil sum', fmt1(ps.reduce((t, p) => t + p.ceiling, 0))],
+     ['Rating', ps.length ? fmt1(ps.reduce((t, p) => t + p.rating, 0) / ps.length) : '—'], ['Games', String(games)]]
+      .forEach(([k, v]) => { const d = el('div'); d.append(el('span', '', k), el('b', '', v)); tot.append(d); });
+
+    // Status line: last action, then what still needs attention.
+    const notes = [];
+    if (lbNote.text) notes.push([lbNote.text, lbNote.cls]);
+    if (ps.length === 8 && games < 2) notes.push(['DraftKings needs players from at least 2 games.', 'bad']);
+    else if (open.length) notes.push([`Still to fill: ${open.join(', ')}.`, '']);
+    const first = ps.length ? Math.min(...ps.map(tipOf)) : 0;
+    ps.forEach((p) => {
+      const s = Object.keys(slots).find((k) => slots[k] === p);
+      if (ps.length === 8 && !FLEX.includes(s) && tipOf(p) > first && FLEX.some((f) => slots[f] && tipOf(slots[f]) < tipOf(p)))
+        notes.push([`Late swap: ${p.name} (${p.time.replace(/^0/, '')}) has to stay in ${s}; only another ${s} can replace him.`, 'warn']);
+    });
+    ps.filter((p) => p.flags.length).forEach((p) => notes.push([`${p.name}: ${p.flags.map((f) => f.replace('unresolved ', '')).join(', ')}`, 'warn']));
+    const msgs = notes.map(([t, c]) => el('p', 'lb-msg ' + c, t));
+
+    const actions = el('div', 'lb-actions');
+    const btn = (label, fn, cls = 'btn') => { const b = el('button', cls, label); b.type = 'button'; b.addEventListener('click', fn); actions.append(b); return b; };
+    const copyBtn = btn('Copy for DraftKings', () => copyText(dkCsv([slots]), 'this lineup'), 'btn primary');
+    copyBtn.disabled = ps.length < 8;
+    copyBtn.title = ps.length < 8 ? 'Fill all 8 slots first' : 'DraftKings upload format: positions header + player IDs';
+    const saveBtn = btn('Save', () => {
+      const all = LB.saved[dg()] || [];
+      const key = [...lbIds()].sort().join();
+      if (all.some((l) => [...l].sort().join() === key)) lbMessage('That lineup is already saved.', 'warn');
+      else { LB.saved[dg()] = [...all, lbIds()]; lbSave(); lbMessage(`Saved as lineup ${all.length + 1}.`); }
+      drawBuilder();
+    });
+    saveBtn.disabled = ps.length < 8;
+    btn('Clear', () => { lbSet([]); lbMessage('Cleared.'); drawPlayers(true); drawBuilder(); });
+
+    const savedLists = (LB.saved[dg()] || []).map((ids) => ids.map((id) => ratedById.get(id)).filter(Boolean));
+    const det = el('details');
+    det.open = !!LB.savedOpen;
+    det.addEventListener('toggle', () => { LB.savedOpen = det.open; lbSave(); });
+    det.append(el('summary', '', `Saved lineups (${savedLists.length})`));
+    if (savedLists.length) {
+      const ol = el('ol', 'lb-saved');
+      savedLists.forEach((lp, i) => {
+        const li = el('li');
+        const proj = lp.reduce((t, p) => t + p.median, 0);
+        const sal2 = lp.reduce((t, p) => t + p.salary, 0);
+        li.append(el('span', '', `${i + 1}. ${fmt1(proj)} proj · ${money(sal2)} · ${lp.map((p) => p.name.split(' ').slice(-1)[0]).join(', ')}`));
+        const ld = el('button', 'lnk', 'Load'); ld.type = 'button';
+        ld.addEventListener('click', () => { lbSet(lp.map((p) => p.dk_id)); lbMessage(`Loaded saved lineup ${i + 1}.`); drawPlayers(true); drawBuilder(); });
+        const rm = el('button', 'lb-x', '×'); rm.type = 'button'; rm.setAttribute('aria-label', `Delete saved lineup ${i + 1}`);
+        rm.addEventListener('click', () => { LB.saved[dg()].splice(i, 1); lbSave(); lbMessage(`Deleted saved lineup ${i + 1}.`); drawBuilder(); });
+        li.append(ld, rm);
+        ol.append(li);
+      });
+      det.append(ol);
+      const all = el('button', 'btn', 'Copy all for DraftKings');
+      all.type = 'button';
+      all.style.marginTop = '8px';
+      all.addEventListener('click', () => copyText(dkCsv(savedLists.map((lp) => arrange(lp))), `${savedLists.length} lineups`));
+      det.append(all);
+    } else det.append(el('p', 'lb-msg', 'Save full lineups to build a set, then copy them all at once.'));
+
+    const ta = el('textarea'); ta.id = 'lb-copy'; ta.readOnly = true; ta.setAttribute('aria-label', 'DraftKings CSV');
+    ta.hidden = !keepCopyBox;
+    if (keepCopyBox) { ta.value = $('lb-copy')?.value || ''; }
+
+    box.replaceChildren(h, sal, list, tot, ...msgs, actions, det, ta);
+    if (keepCopyBox) { ta.select(); }
+    lbNote = { text: '', cls: '' };
+    drawFab();
+  }
+  $('lb-fab').addEventListener('click', () => setBuilderOpen(!LB.open));
+  window.addEventListener('resize', () => { const head = document.querySelector('header.top'); if (head) $('lb').style.setProperty('--lb-top', Math.round(head.getBoundingClientRect().bottom + 12) + 'px'); });
+
   function drawAll() {
     drawHeader(); drawWeights(); drawPlayers(); drawLineups(); drawInjuries(); drawPick6();
+    setBuilderOpen(LB.open); drawBuilder();
     drawColPicker(); drawGlossary();
   }
   drawAll();

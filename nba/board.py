@@ -185,7 +185,7 @@ def export_slate(dg, label, players, absences, dvp):
         "games": sorted({(p["game"], p["game_time"]) for p in rated},
                         key=lambda g: datetime.strptime(g[1], "%I:%M%p")),
         "players": [{
-            "name": p["name"], "team": p["team"], "opp": p["opp"], "game": p["game"],
+            "name": p["name"], "dk_id": p["dk_id"], "team": p["team"], "opp": p["opp"], "game": p["game"],
             "pos": p["positions"].replace("/UTIL", ""), "salary": p["salary"],
             "median": p["proj_fp"], "base_median": p["base_proj_fp"], "bump": p["fp_bump"],
             "bump_min": p["min_bump"], "bump_from": ", ".join(p["bump_from"]),
