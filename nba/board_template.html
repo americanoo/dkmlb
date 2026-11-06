@@ -168,6 +168,9 @@ ol.lb-saved li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-spa
 .gen-sum .big{font:700 22px/1.1 var(--display);color:var(--ink)}
 .gen-warn{color:var(--warn);font-size:12.5px;margin:8px 0 0}
 .hist-t{font-size:12.5px}
+.gen-together{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.gen-together h4{margin:0 0 4px;font:700 13px/1.2 var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.gen-together p{margin:0 0 6px;font-size:13px;line-height:1.45}
 .hist-t td,.hist-t th{padding:4px 8px}
 .hist-tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:8px 0}
 #t-players tbody tr.in-lu td{background:var(--accent-soft)}
@@ -1116,14 +1119,26 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     const comps = H ? H.stat_components[p.stat] : null;
     if (!rows || !comps) return null;
     const idx = comps.map((c) => H.columns.indexOf(c));
-    const vals = rows.map((r) => [r[0], idx.reduce((t, i) => t + r[i], 0)]);
+    const dayCol = H.columns.indexOf('day');
+    const vals = rows.map((r) => [r[0], idx.reduce((t, i) => t + r[i], 0), r[dayCol]]);
     const hit = (v) => (p.side === 'More' ? v > p.line : v < p.line);
     const tally = (list) => ({ n: list.length, h: list.filter(([, v]) => hit(v)).length });
     const out = { seasons: {} };
     [2025, 2026, 2027].forEach((s) => { out.seasons[s] = tally(vals.filter(([x]) => x === s)); });
     out.two = tally(vals.filter(([x]) => x === 2025 || x === 2026));
     out.l10 = tally(vals.slice(-10));
+    out.byDay = new Map(vals.map(([, v, d]) => [d, { v, hit: hit(v) }]));
     return out;
+  }
+
+  // Every past night all of these players played: did they all clear today's lines together?
+  function together(legs) {
+    if (legs.some((g) => !g.h)) return null;
+    const days = [...legs[0].h.byDay.keys()].filter((d) => legs.every((g) => g.h.byDay.has(d))).sort((a, b) => a - b);
+    if (!days.length) return { n: 0 };
+    const all = days.filter((d) => legs.every((g) => g.h.byDay.get(d).hit)).length;
+    const legRates = legs.map((g) => days.filter((d) => g.h.byDay.get(d).hit).length / days.length);
+    return { n: days.length, all, indep: legRates.reduce((t, q) => t * q, 1), days };
   }
   const hitRate = (t) => (t && t.n ? t.h / t.n : null);
   const pctOf = (t) => (t && t.n ? `${Math.round((100 * t.h) / t.n)}% (${t.h}/${t.n})` : '—');
@@ -1215,10 +1230,40 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
           B(evFrom(histProbs.map((q) => q ?? 0))?.toFixed(2) ?? '—'), ' by history, ', B(evFrom(legs.map((g) => g.p.prob / 100))?.toFixed(2) ?? '—'), ' by our model.'));
     }
     box.append(sum);
+    if (n >= 2) {
+      const tg = together(legs);
+      const d = el('div', 'gen-together');
+      d.append(el('h4', '', 'All together, on nights they all played'));
+      if (!tg) d.append(el('p', '', 'Not enough history for one of these players.'));
+      else if (!tg.n) d.append(el('p', '', 'These players never played on the same night in the last two seasons.'));
+      else {
+        const fmtDay = (x) => { const s2 = String(x); return `${Number(s2.slice(4, 6))}/${Number(s2.slice(6))}/${s2.slice(2, 4)}`; };
+        d.append(P(`They all played on the same night `, B(String(tg.n)), ` times in the last two seasons and this one (as teammates or not). All of today's picks hit together on `, B(`${tg.all} of ${tg.n}`), ` (`,
+          B((100 * tg.all / tg.n).toFixed(1) + '%'), `). If the picks were independent, those same games would give ${(100 * tg.indep).toFixed(1)}%` +
+          (tg.n >= 20 ? (tg.all / tg.n > tg.indep * 1.15 ? ': they tend to hit together.' : tg.all / tg.n < tg.indep * 0.85 ? ': they tend to cancel out.' : ': about the same.') : '.') +
+          (tg.n < 20 ? ' Too few shared games to read much into it.' : '')));
+        const t2 = el('table', 'gen-legs');
+        const h2 = el('tr'); ['Date', ...legs.map((g) => g.p.name.split(' ').slice(-1)[0] + ' ' + g.p.side[0] + ' ' + g.p.line), 'All'].forEach((x, i) => h2.append(el('th', i ? 'num' : '', x)));
+        const th2 = el('thead'); th2.append(h2);
+        const tb2 = el('tbody');
+        tg.days.slice(-10).reverse().forEach((day) => {
+          const tr = el('tr');
+          tr.append(el('td', 'dim', fmtDay(day)));
+          let ok = true;
+          legs.forEach((g) => { const r = g.h.byDay.get(day); ok = ok && r.hit; tr.append(el('td', 'num ' + (r.hit ? 'up' : 'down'), String(r.v))); });
+          tr.append(el('td', 'num ' + (ok ? 'up' : 'down'), ok ? 'won' : 'lost'));
+          tb2.append(tr);
+        });
+        t2.append(th2, tb2);
+        const w2 = el('div'); w2.style.overflowX = 'auto'; w2.append(t2);
+        d.append(w2, el('p', 'dim', `Last ${Math.min(10, tg.n)} shared games, newest first; each number is that player's stat that night against today's line.`));
+      }
+      box.append(d);
+    }
     const warns = [];
     if (new Set(legs.map((g) => g.p.team)).size < 2 && n >= 2) warns.push('Pick6 needs players from at least 2 teams.');
     const games = legs.map((g) => g.p.game);
-    if (new Set(games).size < games.length) warns.push('Some picks share a game, so they aren\u2019t independent: the all-hit figures above assume they are.');
+    if (new Set(games).size < games.length) warns.push('Some picks share a game, so they aren\u2019t independent. \u201cThese exact picks\u201d assumes they are; \u201cAll together\u201d uses the nights they actually played.');
     legs.forEach((g) => {
       const a = g.h && g.h.seasons[2025], b = g.h && g.h.seasons[2026];
       if (a && b && a.n >= 10 && b.n >= 10 && Math.abs(a.h / a.n - b.h / b.n) >= 0.25)
@@ -1283,7 +1328,23 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     lr.append(lth, ltb);
     const ld = el('details');
     ld.append(el('summary', '', 'Single picks: how often More and Less hit, by stat and season'), lr);
-    box.replaceChildren(intro, tools, tw, el('p', 'note', 'Sorted by return. Win % is all picks hitting; 5- and 6-pick entries also pay for one miss, which the return includes.'), ld);
+    const st = el('table', 'log-t hist-t');
+    const sh = el('tr'); ['Teammates', 'Side', 'Stacks tested', 'All hit', 'All-hit %', 'If independent', 'Together vs independent'].forEach((x, i) => sh.append(el('th', i >= 2 ? 'num' : '', x)));
+    const sth = el('thead'); sth.append(sh);
+    const stb = el('tbody');
+    (H.stacks || []).filter((r) => r.stat === HS.stat).forEach((r) => {
+      const tr = el('tr');
+      tr.append(el('td', '', `${r.size} from one team`), el('td', '', `All ${r.side}`), el('td', 'num', r.stacks.toLocaleString()),
+        el('td', 'num', r.all_hit.toLocaleString()), el('td', 'num', r.all_hit_pct + '%'), el('td', 'num dim', r.independent_pct + '%'),
+        el('td', 'num ' + (r.ratio >= 1.15 ? 'up' : r.ratio <= 0.87 ? 'down' : ''), r.ratio + '×'));
+      stb.append(tr);
+    });
+    st.append(sth, stb);
+    const stw = el('div'); stw.style.overflowX = 'auto'; stw.append(st);
+    box.replaceChildren(intro, tools, tw, el('p', 'note', 'Sorted by return. Win % is all picks hitting; 5- and 6-pick entries also pay for one miss, which the return includes.'),
+      el('h4', 'gl-h', `Same-team stacks (${HS.stat})`),
+      el('p', 'note', 'Teammates in the same game, all More or all Less on the same stat. Above 1× they rise and fall together (pace, overtime, blowouts); below 1× they take shots from each other. Pick6 still needs a second team in the entry.'),
+      stw, ld);
   }
 
   function drawRecord() {

@@ -263,6 +263,41 @@ def needed_win_pct(size):
     return round(100 / PAYOUTS[size][size], 2)
 
 
+def stack_scan(by_day, sizes=(2, 3, 4, 5), per_group=4, seed=11):
+    """Same-team stacks: N teammates in one game, all More (or all Less) on one stat. Compares how
+    often they all hit with what independent picks would give (each leg's hit rate to the power N):
+    above it, teammates rise and fall together; below it, they take shots from each other."""
+    rng = random.Random(seed)
+    rows = []
+    for name in [*STATS, None]:
+        for size in sizes:
+            for side in ("More", "Less"):
+                tested = all_hit = legs = leg_hits = 0
+                for day_props in by_day.values():
+                    groups = defaultdict(dict)  # (game, team) -> {player: prop}
+                    for p in day_props:
+                        if name is None or p["stat"] == name:
+                            groups[(p["game"], p["team"])].setdefault(p["pid"], []).append(p)
+                    for members in groups.values():
+                        if len(members) < size:
+                            continue
+                        for _ in range(per_group):
+                            chosen = [rng.choice(members[pid]) for pid in rng.sample(list(members), size)]
+                            k = sum(hits(p, side) for p in chosen)
+                            tested += 1
+                            all_hit += k == size
+                            legs += size
+                            leg_hits += k
+                if not tested:
+                    continue
+                leg_rate = leg_hits / legs
+                rows.append({"size": size, "side": side, "stat": name or "Any stat", "stacks": tested, "all_hit": all_hit,
+                             "all_hit_pct": round(100 * all_hit / tested, 2), "leg_hit_pct": round(100 * leg_rate, 1),
+                             "independent_pct": round(100 * leg_rate ** size, 2),
+                             "ratio": round((all_hit / tested) / (leg_rate ** size), 2) if leg_rate else None})
+    return rows
+
+
 def scan(by_day, sizes=(2, 3, 4, 5, 6), per_day=60):
     rows = []
     for size in sizes:
@@ -292,13 +327,17 @@ COMPACT = ("PTS", "REB", "AST", "STL", "BLK", "TO", "3PM", "3PA", "FGM", "FGA", 
 def compact_games(players, ids, components=COMPACT):
     """{espn_id: [[season, *components], ...] oldest first} for the given players, for the board."""
     by_id = {p["id"]: p for p in players}
-    return {eid: [[g["season"], *[g[c] for c in components]] for g in by_id[eid]["games"]] for eid in ids if eid in by_id}
+    return {eid: [[g["season"], int(et_day(g["date"]).replace("-", "")), *[g[c] for c in components]]
+                  for g in by_id[eid]["games"]] for eid in ids if eid in by_id}
+
+
+EXPORT_VERSION = 2  # bump when export_for_board's output changes, so the day's cache is rebuilt
 
 
 def export_for_board(players, rule=DEFAULT_RULE):
     """Pattern scan, per-stat More/Less rates and calibration, cached for the day."""
     os.makedirs(CACHE, exist_ok=True)
-    path = os.path.join(CACHE, f"scan_{time.strftime('%Y%m%d')}_{rule.replace(' ', '_')}.json")
+    path = os.path.join(CACHE, f"scan_v{EXPORT_VERSION}_{time.strftime('%Y%m%d')}_{rule.replace(' ', '_')}.json")
     if os.path.exists(path):
         with open(path) as f:
             return json.load(f)
@@ -313,6 +352,7 @@ def export_for_board(players, rule=DEFAULT_RULE):
         "leg_rates": leg_rates(players, rule),
         "needed": {str(n): needed_win_pct(n) for n in PAYOUTS},
         "scan": scan(by_day),
+        "stacks": stack_scan(by_day),
     }
     with open(path, "w") as f:
         json.dump(out, f)

@@ -218,7 +218,7 @@ def export_history(ids=()):
     players = history.load()
     out = history.export_for_board(players)
     out["games"] = history.compact_games(players, ids)
-    out["columns"] = ["season", *history.COMPACT]
+    out["columns"] = ["season", "day", *history.COMPACT]
     out["stat_components"] = pick6.STATS
     return out
 
