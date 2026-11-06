@@ -116,7 +116,8 @@ tr.detail:hover>td{background:var(--ground)}
 /* lineup builder: a fixed side panel on wide screens, a bottom sheet on narrow ones */
 .lb{position:fixed;z-index:7;right:max(16px,env(safe-area-inset-right,0px));top:var(--lb-top,160px);bottom:calc(16px + env(safe-area-inset-bottom,0px));width:340px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px 14px;box-shadow:0 8px 24px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:10px}
 .lb[hidden]{display:none!important}
-@media (min-width:1100px){body.lb-on main.wrap{padding-right:calc(340px + 32px)}}
+@media (min-width:1100px){body.lb-on:not(.no-lb) main.wrap{padding-right:calc(340px + 32px)}}
+body.no-lb .lb,body.no-lb .lb-fab{display:none!important}
 @media (max-width:1099px){.lb{left:max(16px,env(safe-area-inset-left,0px));width:auto;top:auto;max-height:72vh;bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 .lb-fab{position:fixed;z-index:8;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));font:600 14px/1 var(--display);letter-spacing:.05em;text-transform:uppercase;background:var(--accent);color:var(--ground);border:0;border-radius:4px;padding:11px 14px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.18)}
 .lb-fab:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
@@ -153,7 +154,22 @@ ol.lb-slots .n b{color:var(--ink);font-weight:600}
 ol.lb-saved{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px;font-size:12.5px}
 ol.lb-saved li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;border-bottom:1px solid var(--line);padding-bottom:5px}
 ol.lb-saved li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#t-players tbody tr.pick-row{cursor:pointer}
+#t-players tbody tr.pick-row,#t-p6 tbody tr.pick-row{cursor:pointer}
+#t-p6 tbody tr.in-lu td{background:var(--accent-soft)}
+#t-p6 tbody tr.in-lu td.sticky{box-shadow:inset 3px 0 0 var(--accent)}
+.p6-gen{margin-bottom:12px}
+.gen-legs{width:100%;font-size:12.5px;margin:6px 0 10px}
+.gen-legs th,.gen-legs td{padding:4px 6px;position:static;background:none;cursor:default;border-bottom:1px solid var(--line)}
+.gen-legs th{font-size:11px}
+.gen-legs th::after{content:none!important}
+.gen-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:10px 24px}
+.gen-sum h4{margin:0 0 4px;font:700 13px/1.2 var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.gen-sum p{margin:0;font-size:13px;line-height:1.45}
+.gen-sum .big{font:700 22px/1.1 var(--display);color:var(--ink)}
+.gen-warn{color:var(--warn);font-size:12.5px;margin:8px 0 0}
+.hist-t{font-size:12.5px}
+.hist-t td,.hist-t th{padding:4px 8px}
+.hist-tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:8px 0}
 #t-players tbody tr.in-lu td{background:var(--accent-soft)}
 #t-players tbody tr.no-fit td{opacity:.45}
 #t-players tbody tr.in-lu td.sticky{box-shadow:inset 3px 0 0 var(--accent)}
@@ -298,6 +314,8 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
         <li>Every run is logged; <code>python3 nba/pick6.py --review</code> grades them after the games so the trust setting can be earned, not guessed.</li>
       </ul></div></details>
     <div class="c-card p6-record" id="p6-record"></div>
+    <div class="c-card p6-gen" id="p6-gen"></div>
+    <details class="dsec" id="p6-hist" open><summary><span class="ds-t">Pattern history</span><span class="ds-h" id="p6-hist-h"></span></summary><div class="ds-b" id="p6-hist-b"></div></details>
     <details class="dsec" id="p6-entries-d"><summary><span class="ds-t">Model entries</span><span class="ds-h">Tracking only until the record above shows the model beating DK's prices over 10+ days</span></summary>
       <div class="ds-b"><div class="c-grid" id="p6-entries"></div></div></details>
     <div class="tools">
@@ -413,6 +431,7 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     S.tab = b.dataset.p;
     document.querySelectorAll('nav.tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
     ['players', 'lineups', 'injuries', 'pick6'].forEach((p) => { $('p-' + p).hidden = p !== S.tab; });
+    document.body.classList.toggle('no-lb', S.tab === 'pick6' || S.tab === 'injuries');
   }));
 
   // ---- weights panel ----
@@ -961,6 +980,8 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       $('t-p6').parentElement.hidden = true;
       document.querySelector('#p-pick6 .tools').hidden = true;
       if (P6.record) drawRecord(); else $('p6-record').hidden = true;
+      $('p6-gen').hidden = true;
+      drawHistory();
       return;
     }
     const be = P6.breakeven[String(P6S.size)];
@@ -968,6 +989,8 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
       (P6.unmapped.length ? ` Not modeled: ${P6.unmapped.join(', ')}.` : '');
     $('p6-trust').textContent = P6.trust;
     drawRecord();
+    drawGenerator();
+    drawHistory();
     $('p6-sizes').replaceChildren(...Object.keys(P6.breakeven).map((n) => {
       const pay = P6.payouts[n];
       const tiers = Object.entries(pay).sort((a, b) => b[0] - a[0]).map(([k, v]) => `${k}/${n} ${v}x`).join(', ');
@@ -1023,13 +1046,18 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     const body = el('tbody');
     const shown = rows.slice(0, 600);
     shown.forEach((p) => {
-      const tr = el('tr');
+      const inEntry = GEN.some((g) => g.key === pickKey(p));
+      const tr = el('tr', 'pick-row' + (inEntry ? ' in-lu' : ''));
+      tr.tabIndex = 0;
+      tr.title = inEntry ? 'In your entry: click to remove' : 'Click to add to your entry';
+      tr.addEventListener('click', () => genToggle(p));
+      tr.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === tr) { e.preventDefault(); genToggle(p); } });
       const key = `${p.hist}|${p.line}|${p.side}`;
       const name = el('td', 'name sticky');
       const b = el('button', 'pname', p.name);
       b.type = 'button';
       b.setAttribute('aria-expanded', String(P6S.open.has(key)));
-      b.addEventListener('click', () => { P6S.open.has(key) ? P6S.open.delete(key) : P6S.open.add(key); drawPick6(); });
+      b.addEventListener('click', (e) => { e.stopPropagation(); P6S.open.has(key) ? P6S.open.delete(key) : P6S.open.add(key); drawPick6(); });
       name.append(b);
       const hit = (h) => (h[0] == null ? '—' : `${h[0]}%`);
       const sideTag = el('td'); sideTag.append(el('span', 'tag ' + (p.side === 'More' ? 't-good' : 't-bad'), p.side));
@@ -1078,6 +1106,186 @@ details.dsec[open]>summary::before{transform:rotate(90deg)}
     $('t-p6').replaceChildren(thead, body);
     $('p6-count').textContent = `${rows.length.toLocaleString()} picks` + (rows.length > shown.length ? ` (showing top ${shown.length})` : '');
   }
+  // ---- Pick6 entry generator: pick current props, see how they and their pattern did ----
+  const H = P6 && P6.history;
+  let GEN = [];
+  const pickKey = (p) => `${p.hist}|${p.line}|${p.side}`;
+  const SEASON_LABEL = { 2025: '2024-25', 2026: '2025-26', 2027: '2026-27' };
+  function legHistory(p) {
+    const rows = H && H.games ? H.games[p.hp] : null;
+    const comps = H ? H.stat_components[p.stat] : null;
+    if (!rows || !comps) return null;
+    const idx = comps.map((c) => H.columns.indexOf(c));
+    const vals = rows.map((r) => [r[0], idx.reduce((t, i) => t + r[i], 0)]);
+    const hit = (v) => (p.side === 'More' ? v > p.line : v < p.line);
+    const tally = (list) => ({ n: list.length, h: list.filter(([, v]) => hit(v)).length });
+    const out = { seasons: {} };
+    [2025, 2026, 2027].forEach((s) => { out.seasons[s] = tally(vals.filter(([x]) => x === s)); });
+    out.two = tally(vals.filter(([x]) => x === 2025 || x === 2026));
+    out.l10 = tally(vals.slice(-10));
+    return out;
+  }
+  const hitRate = (t) => (t && t.n ? t.h / t.n : null);
+  const pctOf = (t) => (t && t.n ? `${Math.round((100 * t.h) / t.n)}% (${t.h}/${t.n})` : '—');
+
+  function genToggle(p) {
+    const k = pickKey(p);
+    if (GEN.some((g) => g.key === k)) GEN = GEN.filter((g) => g.key !== k);
+    else if (GEN.some((g) => g.p.name === p.name)) { GEN = GEN.filter((g) => g.p.name !== p.name); GEN.push({ key: k, p }); }
+    else if (GEN.length >= 6) { genNote = 'Entries here go up to 6 picks (the pattern history covers 2–6).'; }
+    else GEN.push({ key: k, p });
+    drawPick6();
+  }
+  let genNote = '';
+
+  function hitsDist(ps) {
+    let dist = [1];
+    ps.forEach((q) => {
+      const nxt = new Array(dist.length + 1).fill(0);
+      dist.forEach((v, k) => { nxt[k] += v * (1 - q); nxt[k + 1] += v * q; });
+      dist = nxt;
+    });
+    return dist;
+  }
+
+  function drawGenerator() {
+    const box = $('p6-gen');
+    box.hidden = false;
+    box.replaceChildren(el('h3', '', 'Entry generator'));
+    if (!GEN.length) {
+      box.append(el('p', 'note', 'Click any pick in the table below to add it here (up to 6, one per player). For each pick you\u2019ll see how often that player cleared that exact line over the last two seasons, and for the whole entry how its pattern did across every night of both seasons.'));
+      return;
+    }
+    const legs = GEN.map((g) => ({ ...g, h: legHistory(g.p) }));
+    const t = el('table', 'gen-legs');
+    const head = el('tr');
+    ['', 'Pick', 'Mult', 'DK %', 'Model %', '2024-25', '2025-26', 'This season', 'L10', ''].forEach((x, i) => head.append(el('th', i >= 2 && i <= 8 ? 'num' : '', x)));
+    const th = el('thead'); th.append(head);
+    const tb = el('tbody');
+    legs.forEach((g, i) => {
+      const p = g.p;
+      const tr = el('tr');
+      const x = el('button', 'lb-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Remove ' + p.name);
+      x.addEventListener('click', () => genToggle(p));
+      const pick = el('td');
+      pick.append(el('b', '', p.name), document.createTextNode(` ${p.side} ${p.line} ${p.stat} `), el('span', 'dim', `${p.team} vs ${p.opp}`));
+      tr.append(el('td', 'dim', String(i + 1)), pick, el('td', 'num', p.mult + 'x'), el('td', 'num', p.implied.toFixed(1)), el('td', 'num', p.prob.toFixed(1)),
+        el('td', 'num', g.h ? pctOf(g.h.seasons[2025]) : '—'), el('td', 'num', g.h ? pctOf(g.h.seasons[2026]) : '—'),
+        el('td', 'num', g.h ? pctOf(g.h.seasons[2027]) : '—'), el('td', 'num', g.h ? pctOf(g.h.l10) : '—'));
+      const xc = el('td'); xc.append(x); tr.append(xc);
+      tb.append(tr);
+    });
+    t.append(th, tb);
+    const tw = el('div'); tw.style.overflowX = 'auto'; tw.append(t);
+    box.append(tw);
+
+    const n = legs.length;
+    const nMore = legs.filter((g) => g.p.side === 'More').length;
+    const stats = [...new Set(legs.map((g) => g.p.stat))];
+    const statKey = stats.length === 1 && H && H.scan.some((r) => r.stat === stats[0]) ? stats[0] : 'Any stat';
+    const row = H && n >= 2 ? H.scan.find((r) => r.size === n && r.n_more === nMore && r.stat === statKey) : null;
+    const pays = P6.payouts && P6.payouts[String(n)];
+    const boost = legs.reduce((t, g) => t * g.p.mult, 1);
+    const evFrom = (probs) => {
+      if (!pays) return null;
+      const dist = hitsDist(probs);
+      return Object.entries(pays).reduce((t, [k, m]) => t + (dist[Number(k)] || 0) * m * boost, 0);
+    };
+    const histProbs = legs.map((g) => hitRate(g.h && g.h.two) ?? hitRate(g.h && g.h.seasons[2027]));
+    const allHist = histProbs.every((q) => q != null) ? histProbs.reduce((t, q) => t * q, 1) : null;
+    const allModel = legs.reduce((t, g) => t * g.p.prob / 100, 1);
+
+    const sum = el('div', 'gen-sum');
+    const sec = (title, ...lines) => { const d = el('div'); d.append(el('h4', '', title)); lines.forEach((l) => d.append(l)); sum.append(d); };
+    const P = (...parts) => { const p = el('p'); parts.forEach((x) => p.append(x)); return p; };
+    const B = (x, cls = '') => el('b', cls, x);
+    const mix = nMore === n ? 'all More' : nMore === 0 ? 'all Less' : `${nMore} More + ${n - nMore} Less`;
+    if (n < 2) sec('This entry', P('Add at least one more pick: Pick6 entries are 2 picks or more.'));
+    else {
+      sec('Pattern history', row
+        ? P(`${n}-pick, ${mix}, ${statKey === 'Any stat' ? 'any stats' : statKey} — every night of both seasons: `, B(row.entries.toLocaleString()), ' entries, ',
+            B(row.wins.toLocaleString(), 'up'), ' won, ', B(row.losses.toLocaleString(), 'down'), ' lost (', B(row.win_pct + '%'), ` won; ${H.needed[String(n)]}% needed to break even at ${pays ? pays[String(n)] : '—'}x). Returned `,
+            B('$' + row.return.toFixed(2)), ' per $1.')
+        : P('No pattern history for this size.'),
+        row ? P(el('span', 'dim', Object.entries(row.by_season).map(([s, v]) => `${s}: ${v.wins.toLocaleString()} of ${v.entries.toLocaleString()} (${v.win_pct}%)`).join(' · '))) : '');
+      sec('These exact picks',
+        P('All hit, from each player\u2019s last two seasons at these lines: ', B(allHist != null ? (100 * allHist).toFixed(1) + '%' : '—'),
+          '; by our model: ', B((100 * allModel).toFixed(1) + '%'), '.'),
+        P(`Payout if all hit: ${pays ? pays[String(n)] : '—'}x${boost !== 1 ? ` × line multipliers ${boost.toFixed(2)}` : ''}. Expected return per $1: `,
+          B(evFrom(histProbs.map((q) => q ?? 0))?.toFixed(2) ?? '—'), ' by history, ', B(evFrom(legs.map((g) => g.p.prob / 100))?.toFixed(2) ?? '—'), ' by our model.'));
+    }
+    box.append(sum);
+    const warns = [];
+    if (new Set(legs.map((g) => g.p.team)).size < 2 && n >= 2) warns.push('Pick6 needs players from at least 2 teams.');
+    const games = legs.map((g) => g.p.game);
+    if (new Set(games).size < games.length) warns.push('Some picks share a game, so they aren\u2019t independent: the all-hit figures above assume they are.');
+    legs.forEach((g) => {
+      const a = g.h && g.h.seasons[2025], b = g.h && g.h.seasons[2026];
+      if (a && b && a.n >= 10 && b.n >= 10 && Math.abs(a.h / a.n - b.h / b.n) >= 0.25)
+        warns.push(`${g.p.name} cleared this line ${Math.round((100 * a.h) / a.n)}% of the time in 2024-25 but ${Math.round((100 * b.h) / b.n)}% in 2025-26: his role changed, so the two-season rate misleads. Lean on this season and his last 10.`);
+    });
+    if (legs.some((g) => g.p.mult !== 1)) warns.push('Pattern history uses standard (1x) lines; alternate lines change both the odds and the payout.');
+    if (genNote) { warns.push(genNote); genNote = ''; }
+    warns.forEach((w) => box.append(el('p', 'gen-warn', w)));
+    const clear = el('button', 'btn', 'Clear entry'); clear.type = 'button';
+    clear.style.marginTop = '8px';
+    clear.addEventListener('click', () => { GEN = []; drawPick6(); });
+    box.append(clear);
+  }
+
+  const HS = { size: '', stat: 'Any stat', sort: 'return' };
+  function drawHistory() {
+    const box = $('p6-hist-b');
+    if (!H) { $('p6-hist').hidden = true; return; }
+    $('p6-hist-h').textContent = `${H.nights} nights · ${H.props.toLocaleString()} props · ${H.players} players · ${H.seasons.slice(0, 2).join(' and ')} plus this season`;
+    const c = H.calibration;
+    const intro = el('p', 'note', `Every night of both seasons is replayed: each player's line is reconstructed from his previous 20 games as the .5 line that splits them closest to 50/50 (what a book aims for). ` +
+      (c.real_lines ? `Checked against ${c.real_lines} real Pick6 lines, it misses by ${c.miss} on average (points ~${c.by_stat.Points?.miss ?? '—'}, rebounds ~${c.by_stat.Rebounds?.miss ?? '—'}, assists ~${c.by_stat.Assists?.miss ?? '—'}). ` : '') +
+      `Entries are sampled night by night under Pick6's rules (one pick per player, 2+ teams) and paid at Pick6's standard payouts. DraftKings also knows about injuries and roles these lines can't see, so a pattern that wins here still needs to win on real lines (the Record above).`);
+    const tools = el('div', 'hist-tools');
+    const sizeSel = el('select'); sizeSel.setAttribute('aria-label', 'Entry size');
+    sizeSel.append(new Option('All sizes', ''), ...[2, 3, 4, 5, 6].map((n) => new Option(n + '-pick', String(n))));
+    sizeSel.value = HS.size;
+    sizeSel.addEventListener('change', () => { HS.size = sizeSel.value; drawHistory(); });
+    const statSel = el('select'); statSel.setAttribute('aria-label', 'Stat');
+    statSel.append(...[...new Set(H.scan.map((r) => r.stat))].map((x) => new Option(x, x)));
+    statSel.value = HS.stat;
+    statSel.addEventListener('change', () => { HS.stat = statSel.value; drawHistory(); });
+    tools.append(sizeSel, statSel);
+    const rows = H.scan.filter((r) => (!HS.size || String(r.size) === HS.size) && r.stat === HS.stat)
+      .sort((a, b) => (HS.sort === 'return' ? b.return - a.return : a.size - b.size || b.n_more - a.n_more));
+    const t = el('table', 'log-t hist-t');
+    const head = el('tr');
+    ['Entry', 'Mix', 'Entries', 'Won', 'Lost', 'Win %', 'Needed', 'Return per $1', '2024-25', '2025-26'].forEach((x, i) => head.append(el('th', i >= 2 ? 'num' : '', x)));
+    const th = el('thead'); th.append(head);
+    const tb = el('tbody');
+    rows.forEach((r) => {
+      const tr = el('tr');
+      const mix = r.n_more === r.size ? 'All More' : r.n_more === 0 ? 'All Less' : `${r.n_more} More / ${r.size - r.n_more} Less`;
+      const s1 = r.by_season['2024-25'], s2 = r.by_season['2025-26'];
+      tr.append(el('td', '', `${r.size}-pick`), el('td', '', mix), el('td', 'num', r.entries.toLocaleString()), el('td', 'num up', r.wins.toLocaleString()),
+        el('td', 'num down', r.losses.toLocaleString()), el('td', 'num', r.win_pct + '%'), el('td', 'num dim', H.needed[String(r.size)] + '%'),
+        el('td', 'num ' + (r.return >= 1 ? 'up' : ''), '$' + r.return.toFixed(2)),
+        el('td', 'num dim', s1 ? s1.win_pct + '%' : '—'), el('td', 'num dim', s2 ? s2.win_pct + '%' : '—'));
+      tb.append(tr);
+    });
+    t.append(th, tb);
+    const tw = el('div'); tw.style.overflowX = 'auto'; tw.append(t);
+    const lr = el('table', 'log-t hist-t');
+    const lh = el('tr'); ['Stat, season', 'Props', 'More hit', 'Less hit'].forEach((x, i) => lh.append(el('th', i ? 'num' : '', x)));
+    const lth = el('thead'); lth.append(lh);
+    const ltb = el('tbody');
+    Object.entries(H.leg_rates).forEach(([k, v]) => {
+      const tr = el('tr');
+      tr.append(el('td', '', k), el('td', 'num', v.n.toLocaleString()), el('td', 'num' + (v.more_pct > 50 ? ' up' : ''), v.more_pct + '%'), el('td', 'num' + (v.less_pct > 50 ? ' up' : ''), v.less_pct + '%'));
+      ltb.append(tr);
+    });
+    lr.append(lth, ltb);
+    const ld = el('details');
+    ld.append(el('summary', '', 'Single picks: how often More and Less hit, by stat and season'), lr);
+    box.replaceChildren(intro, tools, tw, el('p', 'note', 'Sorted by return. Win % is all picks hitting; 5- and 6-pick entries also pay for one miss, which the return includes.'), ld);
+  }
+
   function drawRecord() {
     const R = P6.record, box = $('p6-record');
     box.replaceChildren(el('h3', '', 'Record so far'));

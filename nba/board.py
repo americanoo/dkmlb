@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import dk_nba  # noqa: E402
 import lateswap  # noqa: E402
+import history  # noqa: E402
 import pick6  # noqa: E402
 import lineups as lu  # noqa: E402
 import ratings  # noqa: E402
@@ -211,6 +212,17 @@ def export_slate(dg, label, players, absences, dvp):
     }
 
 
+def export_history(ids=()):
+    """Two-season pattern backtest for the Pick6 tab, plus box scores for the given players so
+    the entry generator can check any line against their real games."""
+    players = history.load()
+    out = history.export_for_board(players)
+    out["games"] = history.compact_games(players, ids)
+    out["columns"] = ["season", *history.COMPACT]
+    out["stat_components"] = pick6.STATS
+    return out
+
+
 def export_pick6():
     """Today's Pick6 board for the page; each player-stat's last 10 games stored once."""
     data = pick6.run()
@@ -220,10 +232,12 @@ def export_pick6():
         key = f"{p['dk_id']}|{p['stat']}"
         hist.setdefault(key, p.pop("last10"))
         p["hist"] = key
-        for k in ("espn_id", "dk_id", "date"):
+        p["hp"] = p.pop("espn_id", "")
+        for k in ("dk_id", "date"):
             p.pop(k, None)
     data["hist"] = hist
     data["record"] = pick6.record()
+    data["history"] = export_history({p["hp"] for p in data["picks"] if p["hp"]})
     return data
 
 
@@ -243,7 +257,7 @@ def main():
             board["pick6"] = export_pick6()
         except Exception as e:  # the DFS board still publishes; the tab keeps the graded record
             print(f"warning: Pick6 lines not added: {e}", file=sys.stderr)
-            board["pick6"] = {"unavailable": str(e), "record": pick6.record()}
+            board["pick6"] = {"unavailable": str(e), "record": pick6.record(), "history": export_history()}
     data = json.dumps(board, separators=(",", ":")).replace("</", "<\\/")
     with open(TEMPLATE) as f:
         page = f.read().replace("/*__DATA__*/", data)
